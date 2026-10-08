@@ -32,6 +32,7 @@
     'formattedDate',
     'dateText',
     'boldDate',
+    'panjikaToggle',
     'showLocation',
     'locationSummary',
     'locationText',
@@ -342,6 +343,10 @@
         'input[name="calendar"][value="gregorian"]'
       ).checked = true;
     }
+
+    // Show the calendar toggle only for Bengali dates.
+    ui.panjikaToggle.parentElement.hidden = !bnLang;
+    ui.panjikaToggle.checked = bnLang && panjika.checked;
 
     ui.calendarHint.textContent = bnLang
       ? 'Traditional West Bengal Panjika (verified for 2025–2026).'
@@ -1364,7 +1369,7 @@
 
     const marginX = w * 0.035;
     const marginY = h * 0.035;
-    const gap = 3;
+    const gap = 1;
 
     const sig = els.signature;
     const dt = els.date;
@@ -1394,23 +1399,48 @@
       return w - marginX - elWidth;
     };
 
-    const defaultDate = {
-      x: alignX(dw) / w,
-      y: (h - marginY - dh) / h
-    };
+    // ---------------------------------------------
+    // AUTOMATIC SIGNATURE / TIMESTAMP ALIGNMENT
+    // ---------------------------------------------
+
+    const groupWidth = Math.max(sw, dw);
+    const groupX = alignX(groupWidth);
+
+    let signatureX = groupX;
+    let dateX = groupX;
+
+    // Keep both left-aligned when the timestamp
+    // is more than 30% wider than the signature.
+    const dateMuchWider = dw > sw * 1.30;
+
+    if (!dateMuchWider) {
+
+      if (sw > dw) {
+        // Signature is wider:
+        // Center the shorter timestamp beneath it.
+        dateX += (sw - dw) / 2;
+
+      } else if (dw > sw) {
+        // Timestamp is wider by 30% or less:
+        // Center the shorter signature above it.
+        signatureX += (dw - sw) / 2;
+      }
+    }
 
     const defaultSig = {
-      x: alignX(sw) / w,
+      x: signatureX / w,
       y: (
         h - marginY - dh - gap - sh
       ) / h
     };
 
-    const datePos =
-      positions.date || defaultDate;
+    const defaultDate = {
+      x: dateX / w,
+      y: (h - marginY - dh) / h
+    };
 
-    const sigPos =
-      positions.signature || defaultSig;
+    const sigPos = positions.signature || defaultSig;
+    const datePos = positions.date || defaultDate;
 
     place(
       'signature',
@@ -1971,6 +2001,18 @@
     'change',
     updateLocation
   );
+
+  ui.panjikaToggle.addEventListener('change', () => {
+    const mode = ui.panjikaToggle.checked
+      ? 'panjika'
+      : 'gregorian';
+
+    document.querySelector(
+      `input[name="calendar"][value="${mode}"]`
+    ).checked = true;
+
+    void updateDate();
+  });
 
   ui.boldDate.addEventListener(
     'change',

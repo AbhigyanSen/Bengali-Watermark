@@ -42,9 +42,41 @@
         </div>
         <section class="quick-card">
           <div class="card-heading"><div><h2>Make it yours</h2><p>The essentials, all in one place.</p></div><span class="sparkle" aria-hidden="true">✦</span></div>
-          <div class="field"><span class="field-label">Date language</span><div class="segmented" role="group" aria-label="Date language"><label><input type="radio" name="language" value="en" checked><span>English</span></label><label><input type="radio" name="language" value="bn"><span>বাংলা</span></label></div></div>
+          <div class="field"><span class="field-label">Date language</span><div class="segmented" role="group" aria-label="Date language"><label><input type="radio" name="language" value="en"><span>English</span></label><label><input type="radio" name="language" value="bn" checked><span>বাংলা</span></label></div></div>
           <div class="summary-row"><div><strong>Date & time</strong><span id="formattedDate">Choose a photograph</span></div><span class="summary-icon" aria-hidden="true">◷</span></div>
-          <div class="toggles"><label class="toggle-line"><span><strong>Bold timestamp</strong><small>Emphasize the date</small></span><input id="boldDate" type="checkbox" class="switch"></label><label class="toggle-line"><span><strong>Show location</strong><small id="locationSummary">Appears when GPS is available</small></span><input id="showLocation" type="checkbox" class="switch" checked></label></div>
+          <div class="toggles">
+            <label class="toggle-line">
+              <span>
+                <strong>Bold timestamp</strong>
+                <small>Emphasize the date</small>
+              </span>
+              <input id="boldDate" type="checkbox" class="switch">
+            </label>
+
+            <label class="toggle-line">
+              <span>
+                <strong>Show location</strong>
+                <small id="locationSummary">
+                  Appears when GPS is available
+                </small>
+              </span>
+              <input id="showLocation" type="checkbox" class="switch" checked>
+            </label>
+
+            <label class="toggle-line" hidden>
+              <span>
+                <strong>West Bengal Panjika</strong>
+                <small>Traditional Bengali calendar</small>
+              </span>
+              <input id="panjikaToggle" type="checkbox" class="switch">
+            </label>
+          </div>
+
+          <!-- Existing calendar values, controlled by the quick toggle -->
+          <input type="radio" name="calendar" value="gregorian" checked hidden>
+          <input type="radio" name="calendar" value="panjika" hidden>
+          <small id="calendarHint" class="field-help" hidden></small>
+          <p id="panjikaNotice" class="notice" hidden></p>
           <button id="downloadButton" type="button" class="download-button" disabled><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg><span id="downloadLabel">Download photograph</span></button>
           <p id="downloadStatus" class="download-status" role="status" aria-live="polite"></p>
           <p class="privacy-line">Original quality · No permanent storage</p>
@@ -54,7 +86,7 @@
           <div class="advanced-body">
             <div class="field"><label class="field-label" for="photoDateTime">Photo date & time</label><input id="photoDateTime" type="datetime-local" step="60"><small id="dateHelp" class="field-help">Capture time is read from EXIF when available.</small></div>
             <div class="field"><label class="field-label" for="dateText">Custom timestamp <span class="optional">(optional)</span></label><input id="dateText" type="text" maxlength="180" placeholder="Leave blank for formatted date"><small class="field-help">Override how the timestamp appears, without changing the camera date.</small></div>
-            <div class="field"><span class="field-label">Calendar</span><div class="segmented" role="group" aria-label="Calendar"><label><input type="radio" name="calendar" value="gregorian" checked><span>Gregorian</span></label><label><input type="radio" name="calendar" value="panjika"><span>West Bengal Panjika</span></label></div><small id="calendarHint" class="field-help">Choose বাংলা to enable Panjika (2025–2026).</small><p id="panjikaNotice" class="notice" hidden></p></div>
+            <!-- <div class="field"><span class="field-label">Calendar</span><div class="segmented" role="group" aria-label="Calendar"><label><input type="radio" name="calendar" value="gregorian" checked><span>Gregorian</span></label><label><input type="radio" name="calendar" value="panjika"><span>West Bengal Panjika</span></label></div><small id="calendarHint" class="field-help">Choose বাংলা to enable Panjika (2025–2026).</small><p id="panjikaNotice" class="notice" hidden></p></div> -->
             <div class="field"><label class="field-label" for="locationText">Place or address</label><input id="locationText" type="text" maxlength="180" placeholder="GPS location or type a place"><small class="field-help">Camera GPS gives coordinates, not a street address. Type a label here to replace them.</small></div>
             <div class="field"><span class="field-label">Signature style</span><div class="segmented" role="group" aria-label="Signature style"><label><input type="radio" name="signature" value="light" checked><span>Light ink</span></label><label><input type="radio" name="signature" value="dark"><span>Dark ink</span></label></div><small id="signatureStatus" class="field-help">Loading signature…</small></div>
             <div class="field"><span class="field-label">Bottom placement</span><div class="segmented three" role="group" aria-label="Watermark alignment"><label><input type="radio" name="alignment" value="left" checked><span>Left</span></label><label><input type="radio" name="alignment" value="center"><span>Center</span></label><label><input type="radio" name="alignment" value="right"><span>Right</span></label></div><small class="field-help">Moves signature and timestamp together. Location stays independently positioned.</small></div>
