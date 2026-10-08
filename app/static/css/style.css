@@ -60,6 +60,12 @@ h1 em { font-family: Georgia, serif; color: var(--accent); font-weight: 500; }
 .text-button { background: none; padding: 5px; border: 0; color: #a24d42; font-size: 12px; font-weight: 700; }
 .field-feedback { margin: 8px 0 0; color: #9f483b; font-size: 12px; line-height: 1.5; }
 .field-feedback:empty { display: none; }
+.metadata-panel { margin-top: 12px; border: 1px solid #c8ded7; background: #f2f8f6; border-radius: 11px; padding: 12px 13px; }
+.metadata-panel strong { font-size: 12px; color: #1a6a5b; }
+.metadata-panel p { font-size: 11px; color: #526b74; line-height: 1.6; margin: 5px 0 0; overflow-wrap: anywhere; }
+.metadata-panel .metadata-note { color: #8c5f32; }
+.metadata-panel.is-error { background: #fff7f3; border-color: #e4c3b8; }
+.metadata-panel.is-error strong { color: #9f483b; }
 .control-group { border: 0; padding: 0; margin: 0 0 22px; min-width: 0; }
 .control-group:last-child { margin-bottom: 0; }
 .control-group legend, .field-label { display: block; margin-bottom: 9px; font-size: 12px; font-weight: 750; }
@@ -87,6 +93,8 @@ h1 em { font-family: Georgia, serif; color: var(--accent); font-weight: 500; }
 .light-swatch { background: #edf0f2; color: #25313a; }
 .signature-label { display: block; margin: 8px 2px 2px; font-weight: 750; font-size: 12px; }
 .signature-label small { display: block; color: var(--muted); font-weight: 400; font-size: 10px; margin-top: 3px; }
+.bold-date-option { margin-top: 13px; display: inline-flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink); cursor: pointer;}
+.bold-date-option input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent);}
 
 .preview-panel { padding: 26px; position: sticky; top: 22px; }
 .preview-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 21px; }
@@ -99,14 +107,61 @@ h1 em { font-family: Georgia, serif; color: var(--accent); font-weight: 500; }
 .empty-art svg { width: 100%; }
 .empty-state h3 { font-size: 16px; margin: 0 0 7px; }
 .empty-state p { font-size: 12px; color: var(--muted); line-height: 1.7; margin: 0; }
-.photo-frame { position: relative; display: inline-block; max-width: 100%; line-height: 0; overflow: hidden; background: #c8d3d2; box-shadow: 0 10px 30px rgb(16 32 32 / 14%); }
-#photoPreview { display: block; max-width: 100%; max-height: min(65vh, 610px); height: auto; width: auto; object-fit: contain; }
-.watermark { position: absolute; bottom: 4%; left: 3.5%; max-width: 94%; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; z-index: 1; font-family: "Noto Sans Bengali", Vrinda, "Segoe UI", sans-serif; line-height: 1.35; }
-.watermark-date { max-width: 100%; font-size: clamp(10px, 1.7vw, 23px); line-height: 1.5; font-weight: 700; letter-spacing: .005em; overflow-wrap: anywhere; text-shadow: 0 1px 2px rgb(0 0 0 / 28%); }
-.watermark-light { color: #fff; }
-.watermark-dark { color: #14212a; }
-.watermark-dark .watermark-date { text-shadow: 0 1px 2px rgb(255 255 255 / 25%); }
-#signaturePreview { display: block; width: auto; max-width: 42%; max-height: clamp(24px, 6vw, 68px); object-fit: contain; object-position: left center; }
+/* Image wrapper is the positioning context; watermark never escapes into footer. */
+.photo-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  max-height: min(65vh, 610px);
+  line-height: 0;
+  overflow: hidden;
+  background: #c8d3d2;
+  box-shadow: 0 10px 30px rgb(16 32 32 / 14%);
+}
+#photoPreview {
+  display: block;
+  max-width: 100%;
+  max-height: min(65vh, 610px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+.watermark {
+  position: absolute;
+  bottom: 3.5%;
+  left: 3.5%;
+  width: 93%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  z-index: 1;
+  font-family: "Noto Sans Bengali", Vrinda, "Segoe UI", sans-serif;
+  line-height: 1.3;
+  pointer-events: none;
+}
+.watermark-date {
+  max-width: 100%;
+  font-size: clamp(9px, 1.15vw, 14px);
+  line-height: 1.35;
+  font-weight: 400;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  color: var(--signature-text-color);
+  text-shadow: none;
+}
+.watermark-date.is-bold { font-weight: 700; }
+.watermark-light { --signature-text-color: rgb(196, 188, 179); }
+.watermark-dark { --signature-text-color: rgb(39, 43, 47); }
+#signaturePreview {
+  display: block;
+  width: clamp(100px, 20vw, 240px);
+  max-width: 70%;
+  height: auto;
+  object-fit: contain;
+  object-position: left center;
+}
+#signaturePreview[hidden] { display: none; }
 .preview-footer { margin-top: 18px; }
 .preview-footnote { display: flex; gap: 8px; color: #72848f; font-size: 11px; line-height: 1.6; margin-bottom: 17px; }
 .footnote-icon { color: var(--accent); font-size: 17px; line-height: 1; }
@@ -148,3 +203,10 @@ h1 em { font-family: Georgia, serif; color: var(--accent); font-weight: 500; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Make long dates, dynamic metadata, and date/time picker stay inside panels. */
+.editor, .panel, .preview-panel, .preview-stage, .preview-footer { min-width: 0; }
+#photoDateTime { min-width: 0; max-width: 100%; }
+.preview-footnote, .format-output, .format-output strong { min-width: 0; overflow-wrap: anywhere; }
+.format-output strong { font-size: 14px; font-weight: 400; }
+.preview-stage > .photo-frame { flex: 0 1 auto; }
