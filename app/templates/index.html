@@ -1,186 +1,71 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101c27">
-  <meta name="description" content="Create elegant Bengali and English photo watermark previews.">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#12242d">
+  <meta name="description" content="Add your signature, date and place to photographs with Bengali or English fonts.">
   <title>Bengali Watermark Studio</title>
-  <!-- Relative paths work when opened locally and when FastAPI serves this at /. -->
-  <link rel="stylesheet" href="../static/css/style.css">
-  <script src="../static/js/app.js" defer></script>
+  <link rel="stylesheet" href="/static/css/style.css?v=152">
+  <script src="/static/js/app.js?v=152" defer></script>
 </head>
 <body>
-  <header class="site-header">
-    <div class="shell header-inner">
-      <div class="brand" aria-label="Bengali Watermark Studio">
-        <div class="brand-mark" aria-hidden="true">ব</div>
-        <div>
-          <p class="brand-title">Bengali Watermark <span>Studio</span></p>
-          <p class="brand-subtitle">Made for memories, written in বাংলা</p>
-        </div>
-      </div>
-      <span class="header-label"><span class="status-dot" aria-hidden="true"></span> Bengali Panjika · Step 04</span>
+  <header class="masthead">
+    <div class="shell masthead-inner">
+      <a class="brand" href="/" aria-label="Bengali Watermark Studio home"><span class="brand-glyph" aria-hidden="true">ব</span><span><strong>Bengali Watermark <span class="brand-accent">Studio</span></strong><small>Made for memories, written in বাংলা</small></span></a>
+      <span class="header-chip"><span class="status-light"></span>Private photo editor</span>
     </div>
   </header>
-
-  <main class="shell page-content">
-    <div class="page-heading">
-      <div>
-        <p class="eyebrow">PHOTO PERSONALIZATION</p>
-        <h1>Make every photograph <em>yours.</em></h1>
-        <p class="page-subtitle">Add a date in English or Bengali and place your signature in the bottom-left corner. Your original photo stays untouched.</p>
-      </div>
-    </div>
-
-    <div class="workspace">
-      <section class="editor" aria-label="Watermark controls">
-        <section class="panel" aria-labelledby="upload-heading">
-          <div class="section-title">
-            <span class="step-number">01</span>
-            <div>
-              <h2 id="upload-heading">Choose a photo</h2>
-              <p>Drag and drop, or browse your device.</p>
-            </div>
-          </div>
-
-          <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" hidden>
-          <div class="drop-zone" id="dropZone" role="button" tabindex="0" aria-label="Select a photo or drop one here">
-            <span class="drop-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 16-5.2-5.2a2 2 0 0 0-2.8 0L5 19"/></svg>
-            </span>
-            <strong>Drop your photograph here</strong>
-            <span>or click to choose from your gallery</span>
-            <small>JPEG, PNG, WebP, HEIC · Maximum 50 MB</small>
-          </div>
-
-          <div class="file-summary" id="fileSummary" hidden>
-            <div class="file-summary-text">
-              <strong id="fileName"></strong>
-              <span id="fileDetails"></span>
-            </div>
-            <button type="button" class="text-button" id="removePhoto">Remove</button>
-          </div>
-          <p class="field-feedback" id="uploadMessage" role="status" aria-live="polite"></p>
-          <div class="metadata-panel" id="metadataPanel" aria-live="polite" hidden>
-            <strong id="metadataStatus">Reading photo details…</strong>
-            <p id="metadataDetails"></p>
-            <p class="metadata-note" id="metadataWarnings"></p>
-          </div>
-        </section>
-
-        <section class="panel" aria-labelledby="date-heading">
-          <div class="section-title">
-            <span class="step-number">02</span>
-            <div>
-              <h2 id="date-heading">Date &amp; calendar</h2>
-              <p>Customize the language and calendar style.</p>
-            </div>
-          </div>
-
-          <fieldset class="control-group">
-            <legend>Watermark language</legend>
-            <div class="segmented">
-              <label class="segment"><input type="radio" name="language" value="en" checked><span>English</span></label>
-              <label class="segment"><input type="radio" name="language" value="bn"><span lang="bn">বাংলা</span></label>
-            </div>
-          </fieldset>
-
-          <fieldset class="control-group" id="calendarFieldset">
-            <legend>Calendar</legend>
-            <div class="segmented">
-              <label class="segment"><input type="radio" name="calendar" value="gregorian" checked><span>Gregorian</span></label>
-              <label class="segment"><input type="radio" name="calendar" value="panjika"><span>West Bengal Panjika</span></label>
-            </div>
-            <p class="input-hint" id="calendarHint">Switch to বাংলা to select the traditional Bengali calendar.</p>
-          </fieldset>
-
-          <div class="control-group">
-            <label class="field-label" for="photoDateTime">Photo date &amp; time <span class="label-addition">(editable camera time)</span></label>
-            <input id="photoDateTime" type="datetime-local" step="60">
-            <p class="input-hint" id="dateHelp">Choose a photograph to detect its capture time from EXIF. You can always edit this field.</p>
-          </div>
-
-          <div class="format-output" aria-live="polite">
-            <span>WATERMARK DATE PREVIEW</span>
-            <strong id="formattedDate"></strong>
-          </div>
-          <p class="notice" id="panjikaNotice" hidden>West Bengal / Kolkata Bisuddha Siddhanta dates are verified for 2025–2026. Other years are not guessed.</p>
-        </section>
-
-        <section class="panel" aria-labelledby="signature-heading">
-          <div class="section-title">
-            <span class="step-number">03</span>
-            <div>
-              <h2 id="signature-heading">Signature style</h2>
-              <p>Use the transparent PNGs you'll provide.</p>
-            </div>
-          </div>
-          <fieldset class="control-group">
-            <legend>Signature &amp; text color</legend>
-            <div class="signature-options">
-              <label class="signature-option">
-                <input type="radio" name="signature" value="light" checked>
-                <span class="signature-swatch dark-swatch"><span>স্বাক্ষর</span></span>
-                <span class="signature-label">Light <small>For dark photos</small></span>
-              </label>
-              <label class="signature-option">
-                <input type="radio" name="signature" value="dark">
-                <span class="signature-swatch light-swatch"><span>স্বাক্ষর</span></span>
-                <span class="signature-label">Dark <small>For bright photos</small></span>
-              </label>
-            </div>
-          </fieldset>
-          <label class="bold-date-option" for="boldDate">
-            <input type="checkbox" id="boldDate">
-            <span>Bold date &amp; time</span>
-          </label>
-          <p class="input-hint" id="signatureStatus" role="status" aria-live="polite">Loading signature…</p>
-        </section>
-      </section>
-
-      <aside class="preview-panel" aria-labelledby="preview-heading">
-        <div class="preview-heading-row">
-          <div>
-            <p class="eyebrow">YOUR CANVAS</p>
-            <h2 id="preview-heading">Live preview</h2>
-          </div>
-          <span class="preview-badge">BOTTOM LEFT</span>
-        </div>
-
-        <div class="preview-stage" id="previewStage">
-          <div class="empty-state" id="emptyPreview">
-            <div class="empty-art" aria-hidden="true">
-              <svg viewBox="0 0 170 130" fill="none"><rect x="16" y="13" width="138" height="104" rx="15" stroke="currentColor" stroke-width="2"/><circle cx="56" cy="47" r="13" fill="currentColor" opacity=".3"/><path d="M22 100 67 62l24 22 23-31 34 44" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M29 104h48" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
-            </div>
-            <h3>Your photo goes here</h3>
-            <p>Choose an image to see the date and signature layout instantly.</p>
-          </div>
-          <!-- Important: the watermark MUST be inside photoFrame, not a sibling of the photo. -->
+  <main class="shell main">
+    <div class="welcome"><span class="eyebrow">PHOTO PERSONALIZATION</span><h1>Make every photograph <em>yours.</em></h1><p>Add your signature, date and place. Your original photograph stays untouched.</p></div>
+    <div class="app-grid">
+      <section class="canvas-card" aria-labelledby="canvasTitle">
+        <div class="canvas-top"><div><h2 id="canvasTitle">Your photograph</h2><p>Everything you see is included in the export.</p></div><span class="canvas-chip">LIVE PREVIEW</span></div>
+        <div id="previewStage" class="preview-stage">
+          <div id="emptyPreview" class="empty-preview"><div class="upload-art" aria-hidden="true"><svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="10" width="50" height="44" rx="9"/><circle cx="24" cy="25" r="5"/><path d="M10 47l15-14 10 9 10-12 12 13"/></svg></div><h3>Start with a photo</h3><p>Tap to choose an image, or drop one here.</p><button type="button" class="secondary-button" id="choosePhoto">Choose photograph</button><small>JPEG · PNG · WebP · HEIC, up to 50 MB</small></div>
           <div class="photo-frame" id="photoFrame" hidden>
             <img id="photoPreview" alt="Selected photo" decoding="async">
-            <div class="watermark watermark-light" id="watermark" aria-label="Watermark preview">
-              <img id="signaturePreview" alt="Your signature" hidden>
-              <div class="watermark-date" id="watermarkDate"></div>
-            </div>
+            <img id="signaturePreview" class="watermark-item signature-item" data-drag="signature" alt="Signature" draggable="false" hidden>
+            <div id="watermarkDate" class="watermark-item date-item" data-drag="date" aria-label="Date and time"></div>
+            <div id="watermarkLocation" class="watermark-item location-item" data-drag="location" aria-label="Location" hidden></div>
           </div>
         </div>
-
-        <div class="preview-footer">
-          <div class="preview-footnote"><span class="footnote-icon" aria-hidden="true">ⓘ</span><span>Preview proportions are used for the full-resolution download. Camera orientation is preserved; original metadata is removed from exports.</span></div>
-          <button class="download-button" id="downloadButton" type="button" disabled>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-            <span id="downloadLabel">Download final image</span>
-          </button>
-          <p class="download-status" id="downloadStatus" role="status" aria-live="polite"></p>
+        <div class="canvas-footer"><div class="photo-name"><span id="fileName">No photograph selected</span><small id="fileDetails">Photo is processed temporarily, not stored.</small></div><div class="photo-actions"><button type="button" class="subtle-button" id="replacePhoto">Replace</button><button type="button" class="subtle-button danger" id="removePhoto" disabled>Remove</button></div></div>
+        <div class="feedback" id="uploadMessage" role="status"></div>
+        <div class="metadata-note" id="metadataPanel" hidden><strong id="metadataStatus"></strong><span id="metadataDetails"></span><span id="metadataWarnings"></span></div>
+      </section>
+      <aside class="sidebar" aria-label="Photo settings" tabindex="0">
+        <div id="orientationTip" class="orientation-tip" role="status" hidden>
+          <span aria-hidden="true">↻</span>
+          <span><strong>Tip:</strong> Rotate to landscape for easier editing. You can keep editing in portrait, too.</span>
+          <button type="button" id="dismissOrientationTip" aria-label="Dismiss orientation tip">×</button>
         </div>
+        <section class="quick-card">
+          <div class="card-heading"><div><h2>Make it yours</h2><p>The essentials, all in one place.</p></div><span class="sparkle" aria-hidden="true">✦</span></div>
+          <div class="field"><span class="field-label">Date language</span><div class="segmented" role="group" aria-label="Date language"><label><input type="radio" name="language" value="en" checked><span>English</span></label><label><input type="radio" name="language" value="bn"><span>বাংলা</span></label></div></div>
+          <div class="summary-row"><div><strong>Date & time</strong><span id="formattedDate">Choose a photograph</span></div><span class="summary-icon" aria-hidden="true">◷</span></div>
+          <div class="toggles"><label class="toggle-line"><span><strong>Bold timestamp</strong><small>Emphasize the date</small></span><input id="boldDate" type="checkbox" class="switch"></label><label class="toggle-line"><span><strong>Show location</strong><small id="locationSummary">Appears when GPS is available</small></span><input id="showLocation" type="checkbox" class="switch" checked></label></div>
+          <button id="downloadButton" type="button" class="download-button" disabled><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg><span id="downloadLabel">Download photograph</span></button>
+          <p id="downloadStatus" class="download-status" role="status" aria-live="polite"></p>
+          <p class="privacy-line">Original quality · No permanent storage</p>
+        </section>
+        <details class="advanced-card" id="advancedPanel">
+          <summary><span class="advanced-icon" aria-hidden="true">☷</span><span><strong>Advanced options</strong><small>Fonts, placement & editable details</small></span><svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="advanced-body">
+            <div class="field"><label class="field-label" for="photoDateTime">Photo date & time</label><input id="photoDateTime" type="datetime-local" step="60"><small id="dateHelp" class="field-help">Capture time is read from EXIF when available.</small></div>
+            <div class="field"><label class="field-label" for="dateText">Custom timestamp <span class="optional">(optional)</span></label><input id="dateText" type="text" maxlength="180" placeholder="Leave blank for formatted date"><small class="field-help">Override how the timestamp appears, without changing the camera date.</small></div>
+            <div class="field"><span class="field-label">Calendar</span><div class="segmented" role="group" aria-label="Calendar"><label><input type="radio" name="calendar" value="gregorian" checked><span>Gregorian</span></label><label><input type="radio" name="calendar" value="panjika"><span>West Bengal Panjika</span></label></div><small id="calendarHint" class="field-help">Choose বাংলা to enable Panjika (2025–2026).</small><p id="panjikaNotice" class="notice" hidden></p></div>
+            <div class="field"><label class="field-label" for="locationText">Place or address</label><input id="locationText" type="text" maxlength="180" placeholder="GPS location or type a place"><small class="field-help">Camera GPS gives coordinates, not a street address. Type a label here to replace them.</small></div>
+            <div class="field"><span class="field-label">Signature style</span><div class="segmented" role="group" aria-label="Signature style"><label><input type="radio" name="signature" value="light" checked><span>Light ink</span></label><label><input type="radio" name="signature" value="dark"><span>Dark ink</span></label></div><small id="signatureStatus" class="field-help">Loading signature…</small></div>
+            <div class="field"><span class="field-label">Bottom placement</span><div class="segmented three" role="group" aria-label="Watermark alignment"><label><input type="radio" name="alignment" value="left" checked><span>Left</span></label><label><input type="radio" name="alignment" value="center"><span>Center</span></label><label><input type="radio" name="alignment" value="right"><span>Right</span></label></div><small class="field-help">Moves signature and timestamp together. Location stays independently positioned.</small></div>
+            <div class="field"><div class="field-title"><span class="field-label">Move individual elements</span><label class="mini-switch"><input id="freeMove" type="checkbox"> Enable drag</label></div><small class="field-help">Enable, then drag the signature, date or location anywhere inside the photo. Works with touch or mouse.</small><button type="button" class="text-action" id="resetPosition">Reset positions</button></div>
+            <div class="field font-field"><div class="field-title"><span class="field-label">Font collection</span><span id="fontChosen" class="optional">Loading…</span></div><div id="fontGroups" class="font-groups" aria-label="Font families"></div><p id="fontHelp" class="field-help">Fonts are loaded from the English and Bengali folders. Tap a family to expand its styles.</p></div>
+          </div>
+        </details>
       </aside>
     </div>
-
-    <footer class="site-footer">
-      <span>Bengali Watermark Studio · A lightweight photo tool</span>
-      <span>Selected image is processed temporarily for metadata and export · No image is stored permanently</span>
-    </footer>
+    <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" hidden>
+    <footer class="site-footer"><span>Bengali Watermark Studio</span><span>Made with care for your moments.</span></footer>
   </main>
 </body>
 </html>

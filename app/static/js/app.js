@@ -1,133 +1,153 @@
 
 "use strict";
 
-// Bengali Watermark Studio — Step 4.
-// Compatible with Step 4 HTML, CSS, and FastAPI endpoints.
-// Final image download will be connected in Step 5.
+// Bengali Watermark Studio — Version 1.5.1
+// Mobile-first editor, independent watermark layers,
+// responsive preview and full-resolution downloads.
 
 (() => {
-  const LOG = "[BengaliWatermark]";
+  const $ = id => document.getElementById(id);
 
-  const log = {
-    info: (...args) => console.info(LOG, ...args),
-    warn: (...args) => console.warn(LOG, ...args),
-    error: (...args) => console.error(LOG, ...args),
-  };
+  const ui = Object.fromEntries([
+    'photoInput',
+    'choosePhoto',
+    'replacePhoto',
+    'removePhoto',
+    'photoFrame',
+    'photoPreview',
+    'emptyPreview',
+    'previewStage',
+    'signaturePreview',
+    'watermarkDate',
+    'watermarkLocation',
+    'fileName',
+    'fileDetails',
+    'uploadMessage',
+    'metadataPanel',
+    'metadataStatus',
+    'metadataDetails',
+    'metadataWarnings',
+    'photoDateTime',
+    'dateHelp',
+    'formattedDate',
+    'dateText',
+    'boldDate',
+    'showLocation',
+    'locationSummary',
+    'locationText',
+    'downloadButton',
+    'downloadLabel',
+    'downloadStatus',
+    'panjikaNotice',
+    'calendarHint',
+    'signatureStatus',
+    'fontGroups',
+    'fontChosen',
+    'fontHelp',
+    'freeMove',
+    'resetPosition',
+    'orientationTip',
+    'dismissOrientationTip'
+  ].map(id => [id, $(id)]));
 
-  const EN_MONTHS = [
-    "January", "February", "March", "April",
-    "May", "June", "July", "August",
-    "September", "October", "November", "December",
-  ];
-
-  const BN_MONTHS = [
-    "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল",
-    "মে", "জুন", "জুলাই", "আগস্ট",
-    "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর",
-  ];
-
-  const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
-  const MAX_BYTES = 50 * 1024 * 1024;
-  const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic|heif)$/i;
-
-  const IMAGE_TYPES = new Set([
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "image/heic",
-    "image/heif",
+  const optionalUi = new Set([
+    'orientationTip',
+    'dismissOrientationTip'
   ]);
 
-  // ---------------------------------------------
-  // DOM ELEMENTS
-  // ---------------------------------------------
-
-  const ids = [
-    "dropZone",
-    "photoInput",
-    "fileSummary",
-    "fileName",
-    "fileDetails",
-    "removePhoto",
-    "uploadMessage",
-    "metadataPanel",
-    "metadataStatus",
-    "metadataDetails",
-    "metadataWarnings",
-    "dateHelp",
-    "photoDateTime",
-    "boldDate",
-    "calendarHint",
-    "formattedDate",
-    "panjikaNotice",
-    "signatureStatus",
-    "emptyPreview",
-    "photoFrame",
-    "photoPreview",
-    "watermark",
-    "watermarkDate",
-    "signaturePreview",
-    "downloadButton",
-    "downloadLabel",
-    "downloadStatus",
-  ];
-
-  const ui = Object.fromEntries(
-    ids.map(id => [id, document.getElementById(id)])
-  );
-
-  const missing = ids.filter(id => !ui[id]);
+  const missing = Object.entries(ui)
+    .filter(([id, el]) => !el && !optionalUi.has(id))
+    .map(([id]) => id);
 
   if (missing.length) {
-    log.error(
-      "Missing HTML element IDs:",
-      missing.join(", ")
+    console.error(
+      '[BengaliWatermark] Missing UI elements:',
+      missing
     );
     return;
   }
 
-  // ---------------------------------------------
-  // APPLICATION STATE
-  // ---------------------------------------------
+  const log = (...args) =>
+    console.info('[BengaliWatermark]', ...args);
 
-  let photoUrl = null;
-  let photoFile = null;
+  const DIGITS = '০১২৩৪৫৬৭৮৯';
 
-  let uploadId = 0;
-  let metadataController = null;
-  let metadataPending = false;
-  let manualDateEdited = false;
+  const EN = [
+    'January', 'February', 'March',
+    'April', 'May', 'June',
+    'July', 'August', 'September',
+    'October', 'November', 'December'
+  ];
 
-  let signatureId = 0;
-  let dateId = 0;
-  let dateController = null;
+  const BN = [
+    'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ',
+    'এপ্রিল', 'মে', 'জুন',
+    'জুলাই', 'আগস্ট', 'সেপ্টেম্বর',
+    'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
+  ];
 
-  let exporting = false;
-  let dateReady = false;
-
-  // ---------------------------------------------
-  // GENERAL HELPERS
-  // ---------------------------------------------
+  const pad = number =>
+    String(number).padStart(2, '0');
 
   const bn = value =>
     String(value).replace(
       /\d/g,
-      digit => BN_DIGITS[Number(digit)]
+      d => DIGITS[Number(d)]
     );
 
-  const pad = value =>
-    String(value).padStart(2, "0");
-
-  const choice = name =>
+  const selected = name =>
     document.querySelector(
       `input[name="${name}"]:checked`
-    )?.value;
+    )?.value || '';
 
-  // ---------------------------------------------
-  // DATE AND TIME HANDLING
-  // ---------------------------------------------
+  const clamp = (n, lo, hi) =>
+    Math.min(hi, Math.max(lo, n));
 
-  function localDateTime(date) {
+  const els = {
+    signature: ui.signaturePreview,
+    date: ui.watermarkDate,
+    location: ui.watermarkLocation
+  };
+
+  let file = null;
+  let objectUrl = null;
+  let photoRequest = 0;
+  let metaAbort = null;
+
+  let metaPending = false;
+  let manualDateEdited = false;
+  let gpsText = '';
+
+  let signatureRequest = 0;
+  let dateRequest = 0;
+  let dateAbort = null;
+
+  let dateReady = false;
+  let exporting = false;
+  let activeCaption = '';
+
+  let fontCatalog = null;
+  let activeFont = {
+    en: null,
+    bn: null
+  };
+
+  const fontFaces = new Map();
+  let fontFaceCounter = 0;
+
+  const positions = {
+    signature: null,
+    date: null,
+    location: null
+  };
+
+  let layoutQueued = false;
+
+  // --------------------------------------------------
+  // DATE AND TIME HELPERS
+  // --------------------------------------------------
+
+  function localValue(date) {
     return (
       `${date.getFullYear()}-` +
       `${pad(date.getMonth() + 1)}-` +
@@ -137,23 +157,17 @@
     );
   }
 
-  function selectedDate() {
+  function parseDate() {
     const match =
       /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
         .exec(ui.photoDateTime.value);
 
     if (!match) return null;
 
-    const [
-      ,
-      year,
-      month,
-      day,
-      hour,
-      minute
-    ] = match.map(Number);
+    const [, year, month, day, hour, minute] =
+      match.map(Number);
 
-    const date = new Date(
+    const dt = new Date(
       year,
       month - 1,
       day,
@@ -161,251 +175,586 @@
       minute
     );
 
-    if (
-      date.getFullYear() !== year ||
-      date.getMonth() !== month - 1 ||
-      date.getDate() !== day ||
-      date.getHours() !== hour ||
-      date.getMinutes() !== minute
-    ) {
-      return null;
-    }
-
-    return date;
+    return (
+      dt.getFullYear() === year &&
+      dt.getMonth() === month - 1 &&
+      dt.getDate() === day &&
+      dt.getHours() === hour &&
+      dt.getMinutes() === minute
+    ) ? dt : null;
   }
 
-  // ---------------------------------------------
-  // GREGORIAN DATE FORMATTING
-  // ---------------------------------------------
+  function gregorian(dt, language) {
+    if (!dt) return '';
 
-  function formatGregorian(date, language) {
-    if (!date) {
-      return "Enter a valid photo date and time";
-    }
+    const hour = dt.getHours();
+    const minute = pad(dt.getMinutes());
 
-    if (language === "en") {
-      const hour = date.getHours() % 12 || 12;
-      const ampm =
-        date.getHours() < 12 ? "AM" : "PM";
-
+    if (language === 'en') {
       return (
-        `${EN_MONTHS[date.getMonth()]} ` +
-        `${pad(date.getDate())}, ` +
-        `${date.getFullYear()} · ` +
-        `${hour}:${pad(date.getMinutes())} ${ampm}`
+        `${EN[dt.getMonth()]} ` +
+        `${pad(dt.getDate())}, ` +
+        `${dt.getFullYear()} · ` +
+        `${hour % 12 || 12}:${minute} ` +
+        `${hour < 12 ? 'AM' : 'PM'}`
       );
     }
 
     return (
-      `${bn(date.getDate())} ` +
-      `${BN_MONTHS[date.getMonth()]}, ` +
-      `${bn(date.getFullYear())} · ` +
-      `${bn(pad(date.getHours()))}:` +
-      `${bn(pad(date.getMinutes()))}`
+      `${bn(dt.getDate())} ` +
+      `${BN[dt.getMonth()]}, ` +
+      `${bn(dt.getFullYear())} · ` +
+      `${bn(pad(hour))}:${bn(minute)}`
     );
   }
 
-  function refreshDownloadButton() {
-    const available = Boolean(
-      photoFile &&
-      !ui.photoFrame.hidden &&
-      !ui.signaturePreview.hidden &&
-      ui.signaturePreview.naturalWidth > 0 &&
-      dateReady &&
-      selectedDate() &&
-      !exporting
-    );
+  function showCaption(value, ready) {
+    activeCaption = value;
 
-    ui.downloadButton.disabled = !available;
-  }
+    ui.formattedDate.textContent =
+      value || 'Set a photo date in Advanced';
 
-  function showDate(text, ready = Boolean(selectedDate())) {
-    ui.formattedDate.textContent = text;
-    ui.watermarkDate.textContent = text;
+    ui.watermarkDate.textContent = value;
 
-    const language =
-      choice("language") === "bn" ? "bn" : "en";
-
-    ui.formattedDate.lang = language;
-    ui.watermarkDate.lang = language;
+    ui.watermarkDate.lang =
+      ui.formattedDate.lang =
+      selected('language') || 'en';
 
     dateReady = ready;
-    refreshDownloadButton();
+
+    scheduleLayout();
+    refreshDownload();
   }
 
-  // ---------------------------------------------
-  // CANCEL PREVIOUS PANJIKA REQUEST
-  // ---------------------------------------------
-
-  function cancelDateRequest() {
-    dateId += 1;
-
-    if (dateController) {
-      dateController.abort();
-    }
-
-    dateController = null;
-  }
-
-  // ---------------------------------------------
+  // --------------------------------------------------
   // LIVE DATE PREVIEW
-  // ---------------------------------------------
+  // --------------------------------------------------
 
-  async function updateDatePreview() {
-    cancelDateRequest();
+  async function updateDate() {
+    dateRequest++;
 
-    const requestId = dateId;
-    const date = selectedDate();
+    dateAbort?.abort();
+    dateAbort = null;
 
-    const language = choice("language") || "en";
-    const calendar = choice("calendar") || "gregorian";
+    const token = dateRequest;
 
-    // Gregorian date does not require an API call.
+    const dt = parseDate();
+    const language = selected('language');
+    const calendar = selected('calendar');
+    const custom = ui.dateText.value.trim();
+
+    ui.panjikaNotice.hidden = true;
+
+    if (!dt) {
+      showCaption(
+        'Choose a valid date in Advanced',
+        false
+      );
+      return;
+    }
+
+    if (custom) {
+      showCaption(custom, true);
+      return;
+    }
+
     if (
-      language !== "bn" ||
-      calendar !== "panjika"
+      language !== 'bn' ||
+      calendar !== 'panjika'
     ) {
-      showDate(formatGregorian(date, language));
+      showCaption(
+        gregorian(dt, language),
+        true
+      );
       return;
     }
 
-    if (!date) {
-      showDate("পঞ্জিকা দেখতে সঠিক তারিখ লিখুন", false);
-      return;
-    }
-
-    showDate("পশ্চিমবঙ্গের পঞ্জিকা লোড হচ্ছে…", false);
-
-    const params = new URLSearchParams({
-      captured_at: ui.photoDateTime.value,
-      language: "bn",
-      calendar: "panjika",
-    });
+    showCaption(
+      'পঞ্জিকা লোড হচ্ছে…',
+      false
+    );
 
     const controller = new AbortController();
-    dateController = controller;
+    dateAbort = controller;
 
     try {
+      const params = new URLSearchParams({
+        captured_at: ui.photoDateTime.value,
+        language: 'bn',
+        calendar: 'panjika'
+      });
+
       const response = await fetch(
         `/api/image/format-date?${params}`,
-        {
-          signal: controller.signal,
-        }
+        { signal: controller.signal }
       );
 
-      const data = await response.json();
+      const body = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
+          typeof body.detail === 'string'
+            ? body.detail
             : `HTTP ${response.status}`
         );
       }
 
-      // Ignore outdated API responses.
-      if (requestId !== dateId) return;
+      if (token !== dateRequest) return;
 
-      if (typeof data.formatted !== "string") {
-        throw new Error("Missing formatted date");
-      }
-
-      showDate(data.formatted);
-
-      ui.panjikaNotice.textContent =
-        "West Bengal / Kolkata Bisuddha Siddhanta " +
-        "(supported: 2025–2026).";
-
-      log.info("Panjika date", data.formatted);
+      showCaption(body.formatted, true);
 
     } catch (error) {
       if (
         controller.signal.aborted ||
-        requestId !== dateId
+        token !== dateRequest
       ) {
         return;
       }
 
-      showDate("পঞ্জিকা তারিখ পাওয়া যায়নি", false);
-
-      ui.panjikaNotice.hidden = false;
-      ui.panjikaNotice.textContent = error.message;
-
-      log.error(
-        "Panjika API failed:",
-        error.message
+      showCaption(
+        'পঞ্জিকা তারিখ পাওয়া যায়নি',
+        false
       );
 
+      ui.panjikaNotice.hidden = false;
+      ui.panjikaNotice.textContent =
+        error.message;
+
     } finally {
-      if (requestId === dateId) {
-        dateController = null;
+      if (token === dateRequest) {
+        dateAbort = null;
       }
     }
   }
 
-  // ---------------------------------------------
-  // LANGUAGE AND CALENDAR CONTROLS
-  // ---------------------------------------------
+  function updateCalendarControls() {
+    const bnLang =
+      selected('language') === 'bn';
 
-  function updateControls() {
-    const language = choice("language") || "en";
-
-    const panjikaRadio = document.querySelector(
+    const panjika = document.querySelector(
       'input[name="calendar"][value="panjika"]'
     );
 
-    if (panjikaRadio) {
-      panjikaRadio.disabled = language !== "bn";
-    }
+    panjika.disabled = !bnLang;
 
-    if (language !== "bn") {
-      const gregorian = document.querySelector(
+    if (!bnLang) {
+      document.querySelector(
         'input[name="calendar"][value="gregorian"]'
-      );
-
-      if (gregorian) {
-        gregorian.checked = true;
-      }
+      ).checked = true;
     }
 
-    const isPanjika =
-      language === "bn" &&
-      choice("calendar") === "panjika";
+    ui.calendarHint.textContent = bnLang
+      ? 'Traditional West Bengal Panjika (verified for 2025–2026).'
+      : 'Choose বাংলা to enable the West Bengal Panjika.';
 
-    ui.panjikaNotice.hidden = !isPanjika;
-
-    ui.panjikaNotice.textContent = isPanjika
-      ? "West Bengal Panjika (supported years: 2025–2026)."
-      : "";
-
-    ui.calendarHint.textContent =
-      language === "bn"
-        ? "West Bengal / Indian traditional Panjika (not Bangladesh)."
-        : "Switch to বাংলা to select the traditional Bengali calendar.";
-
-    void updateDatePreview();
+    void updateFontForLanguage();
+    void updateDate();
   }
 
-  // ---------------------------------------------
-  // SIGNATURE IMAGE PROCESSING
-  // ---------------------------------------------
+  // --------------------------------------------------
+  // FONT COLLECTION
+  // --------------------------------------------------
 
-  // This function analyzes the original PNG,
-  // detects its color, and crops transparent
-  // padding for the browser preview only.
+  function languageFolder() {
+    return selected('language') === 'bn'
+      ? 'bengali'
+      : 'english';
+  }
+
+  function allVariants(folder) {
+    return (
+      fontCatalog?.groups?.[folder] || []
+    ).flatMap(group => group.variants);
+  }
+
+  async function loadFont(folder, item) {
+    const key = `${folder}/${item.name}`;
+
+    if (fontFaces.has(key)) {
+      return fontFaces.get(key);
+    }
+
+    const family =
+      `watermark_font_${++fontFaceCounter}`;
+
+    const promise = (async () => {
+      const face = new FontFace(
+        family,
+        `url(${JSON.stringify(item.url)})`
+      );
+
+      const loaded = await face.load();
+
+      document.fonts.add(loaded);
+
+      return family;
+    })();
+
+    fontFaces.set(key, promise);
+
+    return promise;
+  }
+
+  function displaySample(el, folder, variant) {
+    loadFont(folder, variant)
+      .then(family => {
+        if (el.isConnected) {
+          el.style.fontFamily =
+            `"${family}", sans-serif`;
+        }
+      })
+      .catch(() => {
+        if (el.isConnected) {
+          el.textContent +=
+            ' (preview unavailable)';
+        }
+      });
+  }
+
+  function createFontPicker() {
+    ui.fontGroups.replaceChildren();
+
+    const folder = languageFolder();
+
+    const groups =
+      fontCatalog?.groups?.[folder] || [];
+
+    const current =
+      activeFont[selected('language')];
+
+    ui.fontChosen.textContent =
+      current || 'System fallback';
+
+    if (!groups.length) {
+      const empty = document.createElement('p');
+
+      empty.className = 'empty-fonts';
+
+      empty.textContent =
+        `No fonts in app/static/fonts/${folder}/. ` +
+        'Add .ttf or .otf files and restart or refresh.';
+
+      ui.fontGroups.append(empty);
+      return;
+    }
+
+    const example = fontCatalog.samples[folder];
+
+    for (const group of groups) {
+      const details =
+        document.createElement('details');
+
+      details.className = 'family';
+
+      const summary =
+        document.createElement('summary');
+
+      const title =
+        document.createElement('span');
+
+      title.className = 'family-name';
+
+      const name =
+        document.createElement('strong');
+
+      name.textContent = group.family;
+
+      const sample =
+        document.createElement('span');
+
+      sample.className = 'font-sample';
+      sample.textContent = example;
+
+      title.append(name, sample);
+
+      const arrow =
+        document.createElement('span');
+
+      arrow.className = 'arrow';
+      arrow.textContent = '›';
+
+      summary.append(title, arrow);
+      details.append(summary);
+
+      displaySample(
+        sample,
+        folder,
+        group.variants[0]
+      );
+
+      const variants =
+        document.createElement('div');
+
+      variants.className = 'variants';
+
+      for (const variant of group.variants) {
+        const button =
+          document.createElement('button');
+
+        button.type = 'button';
+
+        button.className =
+          `variant${
+            variant.name === current
+              ? ' active'
+              : ''
+          }`;
+
+        const label =
+          document.createElement('span');
+
+        label.className = 'variant-label';
+        label.textContent = variant.variant;
+
+        if (variant.name === current) {
+          const flag =
+            document.createElement('span');
+
+          flag.textContent = '✓ Selected';
+          label.append(flag);
+        }
+
+        const line =
+          document.createElement('span');
+
+        line.className = 'font-sample';
+        line.textContent = example;
+
+        const filename =
+          document.createElement('small');
+
+        filename.textContent = variant.name;
+        filename.style.overflowWrap =
+          'anywhere';
+
+        button.append(
+          label,
+          line,
+          filename
+        );
+
+        button.addEventListener(
+          'click',
+          () => {
+            void chooseFont(folder, variant);
+          }
+        );
+
+        variants.append(button);
+
+        // Load individual variants only when expanded.
+        details.addEventListener(
+          'toggle',
+          () => {
+            if (details.open) {
+              displaySample(
+                line,
+                folder,
+                variant
+              );
+            }
+          }
+        );
+      }
+
+      details.append(variants);
+
+      if (
+        group.variants.some(
+          variant => variant.name === current
+        )
+      ) {
+        details.open = true;
+      }
+
+      ui.fontGroups.append(details);
+    }
+  }
+
+  async function chooseFont(folder, variant) {
+    const lang =
+      folder === 'bengali'
+        ? 'bn'
+        : 'en';
+
+    activeFont[lang] = variant.name;
+
+    createFontPicker();
+
+    await applyFont(lang);
+  }
+
+  async function applyFont(
+    lang = selected('language')
+  ) {
+    const folder =
+      lang === 'bn'
+        ? 'bengali'
+        : 'english';
+
+    const requested = activeFont[lang];
+
+    const variant = allVariants(folder).find(
+      item => item.name === requested
+    );
+
+    if (!variant) {
+      ui.watermarkDate.style.fontFamily = '';
+      ui.watermarkLocation.style.fontFamily = '';
+
+      scheduleLayout();
+      return;
+    }
+
+    try {
+      const family = await loadFont(
+        folder,
+        variant
+      );
+
+      if (
+        lang !== selected('language') ||
+        requested !== activeFont[lang]
+      ) {
+        return;
+      }
+
+      ui.watermarkDate.style.fontFamily =
+        `"${family}", "Noto Sans Bengali", sans-serif`;
+
+      ui.watermarkDate.style.fontWeight =
+        ui.boldDate.checked
+          ? '700'
+          : '200';
+
+      ui.watermarkLocation.style.fontWeight =
+        '400';
+
+      await applyLocationFont();
+
+      scheduleLayout();
+
+    } catch (error) {
+      ui.fontHelp.textContent =
+        `Cannot preview ${variant.name}: ` +
+        error.message;
+
+      ui.watermarkDate.style.fontFamily = '';
+      ui.watermarkLocation.style.fontFamily = '';
+    }
+  }
+
+  function locationLanguage() {
+    return /[\u0980-\u09ff]/.test(
+      currentLocation()
+    ) ? 'bn' : 'en';
+  }
+
+  async function applyLocationFont() {
+    const lang = locationLanguage();
+
+    const folder =
+      lang === 'bn'
+        ? 'bengali'
+        : 'english';
+
+    const chosen = activeFont[lang];
+
+    const variant = allVariants(folder).find(
+      item => item.name === chosen
+    );
+
+    if (!variant) {
+      ui.watermarkLocation.style.fontFamily = '';
+      scheduleLayout();
+      return;
+    }
+
+    try {
+      const family = await loadFont(
+        folder,
+        variant
+      );
+
+      if (
+        locationLanguage() !== lang ||
+        activeFont[lang] !== chosen
+      ) {
+        return;
+      }
+
+      ui.watermarkLocation.style.fontFamily =
+        `"${family}", sans-serif`;
+
+      scheduleLayout();
+
+    } catch {
+      ui.watermarkLocation.style.fontFamily = '';
+      scheduleLayout();
+    }
+  }
+
+  async function updateFontForLanguage() {
+    createFontPicker();
+    await applyFont();
+  }
+
+  async function fetchFonts() {
+    try {
+      const response = await fetch(
+        '/api/image/fonts'
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}`
+        );
+      }
+
+      fontCatalog = await response.json();
+
+      for (
+        const [folder, lang] of [
+          ['english', 'en'],
+          ['bengali', 'bn']
+        ]
+      ) {
+        activeFont[lang] =
+          fontCatalog.defaults?.[folder] || null;
+      }
+
+      await updateFontForLanguage();
+
+      log(
+        'Font catalog loaded',
+        fontCatalog.defaults
+      );
+
+    } catch (error) {
+      ui.fontHelp.textContent =
+        `Font collection unavailable: ${error.message}`;
+
+      ui.fontGroups.textContent =
+        'The watermark will use the server fallback font.';
+    }
+  }
+
+  // --------------------------------------------------
+  // SIGNATURE ANALYSIS
+  // --------------------------------------------------
 
   function analyzeSignature(image) {
-    const canvas = document.createElement("canvas");
+    const canvas = document.createElement('canvas');
 
     canvas.width = image.naturalWidth;
     canvas.height = image.naturalHeight;
 
-    const ctx = canvas.getContext("2d", {
-      willReadFrequently: true,
+    const ctx = canvas.getContext('2d', {
+      willReadFrequently: true
     });
 
     if (!ctx) {
-      throw new Error("Canvas 2D is unavailable");
+      throw new Error('Canvas unavailable.');
     }
 
     ctx.drawImage(image, 0, 0);
@@ -421,69 +770,70 @@
     let top = canvas.height;
     let right = -1;
     let bottom = -1;
+    let total = 0;
 
     const channels = [
       new Float64Array(256),
       new Float64Array(256),
-      new Float64Array(256),
+      new Float64Array(256)
     ];
-
-    let weight = 0;
 
     for (let y = 0; y < canvas.height; y++) {
       for (let x = 0; x < canvas.width; x++) {
-        const i = (
+        const pos = (
           y * canvas.width + x
         ) * 4;
 
-        const alpha = pixels[i + 3];
+        const a = pixels[pos + 3];
 
-        if (alpha >= 32) {
+        if (a >= 32) {
           left = Math.min(left, x);
           top = Math.min(top, y);
           right = Math.max(right, x);
           bottom = Math.max(bottom, y);
         }
 
-        if (alpha >= 96) {
+        if (a >= 96) {
           for (let c = 0; c < 3; c++) {
-            channels[c][pixels[i + c]] += alpha;
+            channels[c][pixels[pos + c]] += a;
           }
 
-          weight += alpha;
+          total += a;
         }
       }
     }
 
     if (right < left) {
-      return {
-        url: image.src,
-        color: null,
-      };
+      throw new Error(
+        'Signature contains no visible ink.'
+      );
     }
 
-    function median(histogram) {
-      let sum = 0;
+    const median = histogram => {
+      let n = 0;
 
       for (let i = 0; i < 256; i++) {
-        sum += histogram[i];
+        n += histogram[i];
 
-        if (sum >= weight / 2) {
+        if (n >= total / 2) {
           return i;
         }
       }
 
       return 0;
-    }
+    };
 
-    const color = weight
-      ? `rgb(${channels.map(median).join(", ")})`
-      : null;
+    const ink = total
+      ? `rgb(${channels.map(median).join(',')})`
+      : '';
 
     const margin = Math.max(
       3,
       Math.round(
-        Math.min(canvas.width, canvas.height) * 0.01
+        Math.min(
+          canvas.width,
+          canvas.height
+        ) * 0.01
       )
     );
 
@@ -500,249 +850,228 @@
       bottom + margin
     );
 
-    const width = right - left + 1;
-    const height = bottom - top + 1;
+    const cropped = document.createElement(
+      'canvas'
+    );
 
-    const cropped = document.createElement("canvas");
+    cropped.width = right - left + 1;
+    cropped.height = bottom - top + 1;
 
-    cropped.width = width;
-    cropped.height = height;
-
-    cropped.getContext("2d").drawImage(
+    cropped.getContext('2d').drawImage(
       canvas,
       left,
       top,
-      width,
-      height,
+      cropped.width,
+      cropped.height,
       0,
       0,
-      width,
-      height
+      cropped.width,
+      cropped.height
     );
 
     return {
-      url: cropped.toDataURL("image/png"),
-      color,
+      src: cropped.toDataURL('image/png'),
+      ink
     };
   }
 
-  // ---------------------------------------------
-  // SIGNATURE SELECTION
-  // ---------------------------------------------
-
   function updateSignature() {
-    const selected =
-      choice("signature") || "light";
+    const choice =
+      selected('signature') || 'light';
 
-    const filename = `signature_${selected}.png`;
-    const requestId = ++signatureId;
-
-    const image = ui.signaturePreview;
-
-    ui.watermark.classList.toggle(
-      "watermark-light",
-      selected === "light"
-    );
-
-    ui.watermark.classList.toggle(
-      "watermark-dark",
-      selected === "dark"
-    );
-
-    ui.watermark.style.removeProperty(
-      "--signature-text-color"
-    );
-
-    image.hidden = true;
-    image.onload = null;
-    image.onerror = null;
-    image.removeAttribute("src");
-
-    ui.signatureStatus.textContent =
-      `Loading ${filename}…`;
-
+    const request = ++signatureRequest;
     const source = new Image();
 
-    source.onload = () => {
-      if (requestId !== signatureId) return;
+    ui.signaturePreview.hidden = true;
 
-      let result;
+    ui.signatureStatus.textContent =
+      `Loading ${choice} ink…`;
+
+    ui.photoFrame.style.setProperty(
+      '--watermark-color',
+      choice === 'light'
+        ? 'rgb(196,188,179)'
+        : 'rgb(39,43,47)'
+    );
+
+    refreshDownload();
+
+    source.onload = () => {
+      if (request !== signatureRequest) {
+        return;
+      }
 
       try {
-        result = analyzeSignature(source);
+        const analysis =
+          analyzeSignature(source);
+
+        ui.photoFrame.style.setProperty(
+          '--watermark-color',
+          analysis.ink
+        );
+
+        ui.signaturePreview.onload = () => {
+          if (request !== signatureRequest) {
+            return;
+          }
+
+          ui.signaturePreview.hidden = false;
+
+          ui.signatureStatus.textContent =
+            `Using ${choice} signature ink.`;
+
+          scheduleLayout();
+          refreshDownload();
+        };
+
+        ui.signaturePreview.src =
+          analysis.src;
 
       } catch (error) {
-        log.warn(
-          "Signature analysis failed:",
-          error
-        );
-
-        result = {
-          url: source.src,
-          color: null,
-        };
-      }
-
-      if (result.color) {
-        ui.watermark.style.setProperty(
-          "--signature-text-color",
-          result.color
-        );
-      }
-
-      image.onload = () => {
-        if (requestId !== signatureId) return;
-
-        image.hidden = false;
-
         ui.signatureStatus.textContent =
-          `Loaded ${filename}.`;
-
-        log.info("Signature loaded", {
-          filename,
-          color: result.color,
-        });
-      };
-
-      image.onerror = () => {
-        if (requestId !== signatureId) return;
-
-        ui.signatureStatus.textContent =
-          `Could not show ${filename}.`;
-
-        log.error(
-          "Signature preview decoding failed:",
-          filename
-        );
-      };
-
-      image.src = result.url;
+          error.message;
+      }
     };
 
     source.onerror = () => {
-      if (requestId !== signatureId) return;
-
       ui.signatureStatus.textContent =
-        `Missing ${filename} in app/static/images/.`;
+        `Missing signature_${choice}.png`;
 
-      log.error(
-        "Signature missing:",
-        filename
-      );
+      refreshDownload();
     };
 
-    source.src = `/static/images/${filename}`;
+    source.src =
+      `/static/images/signature_${choice}.png`;
   }
 
-  // ---------------------------------------------
-  // FILE SIZE FORMATTER
-  // ---------------------------------------------
+  // --------------------------------------------------
+  // LOCATION
+  // --------------------------------------------------
 
-  const sizeLabel = bytes =>
-    bytes >= 1048576
-      ? `${(bytes / 1048576).toFixed(2)} MB`
-      : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
+  function currentLocation() {
+    if (!ui.showLocation.checked) {
+      return '';
+    }
 
-  // ---------------------------------------------
-  // METADATA STATUS DISPLAY
-  // ---------------------------------------------
+    return (
+      ui.locationText.value.trim() ||
+      gpsText
+    );
+  }
 
-  function metadataStatus(
+  function updateLocation() {
+    const text = currentLocation();
+
+    ui.watermarkLocation.textContent = text;
+    ui.watermarkLocation.hidden = !text;
+    ui.watermarkLocation.lang =
+      selected('language');
+
+    ui.locationSummary.textContent =
+      text || 'Add a place in Advanced or use GPS';
+
+    if (!text) {
+      positions.location = null;
+    }
+
+    void applyLocationFont();
+    scheduleLayout();
+  }
+
+  // --------------------------------------------------
+  // METADATA
+  // --------------------------------------------------
+
+  function metadataNotice(
     title,
-    details = "",
-    warning = "",
-    error = false
+    details = '',
+    warning = ''
   ) {
     ui.metadataPanel.hidden = false;
-
-    ui.metadataPanel.classList.toggle(
-      "is-error",
-      error
-    );
-
     ui.metadataStatus.textContent = title;
     ui.metadataDetails.textContent = details;
     ui.metadataWarnings.textContent = warning;
   }
 
-  // ---------------------------------------------
-  // CLEAR SELECTED PHOTO
-  // ---------------------------------------------
+  function clearPhoto(clearDate = true) {
+    ++photoRequest;
 
-  function clearPhoto(resetDate = true) {
-    uploadId += 1;
-
-    if (metadataController) {
-      metadataController.abort();
-    }
-
-    metadataController = null;
-    metadataPending = false;
+    metaAbort?.abort();
+    metaAbort = null;
+    metaPending = false;
     manualDateEdited = false;
-    photoFile = null;
 
-    if (photoUrl) {
-      URL.revokeObjectURL(photoUrl);
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
     }
 
-    photoUrl = null;
+    objectUrl = null;
+    file = null;
+    gpsText = '';
 
     ui.photoPreview.onload = null;
     ui.photoPreview.onerror = null;
-    ui.photoPreview.removeAttribute("src");
 
-    ui.photoInput.value = "";
+    ui.photoPreview.removeAttribute('src');
 
     ui.photoFrame.hidden = true;
     ui.emptyPreview.hidden = false;
-    ui.fileSummary.hidden = true;
+
+    ui.photoInput.value = '';
+
+    ui.fileName.textContent =
+      'No photograph selected';
+
+    ui.fileDetails.textContent =
+      'Photo is processed temporarily, not stored.';
+
+    ui.uploadMessage.textContent = '';
+
     ui.metadataPanel.hidden = true;
+    ui.removePhoto.disabled = true;
 
-    ui.uploadMessage.textContent = "";
-
-    if (resetDate) {
-      ui.photoDateTime.value =
-        localDateTime(new Date());
-
-      ui.dateHelp.textContent =
-        "Choose a photo to read the capture date from EXIF; you can edit it.";
-
-      void updateDatePreview();
+    for (const name of Object.keys(positions)) {
+      positions[name] = null;
     }
 
-    log.info("Photo selection cleared");
+    ui.locationText.value = '';
+    updateLocation();
+
+    if (clearDate) {
+      ui.photoDateTime.value = '';
+
+      ui.dateHelp.textContent =
+        'Capture time is read from EXIF when available.';
+
+      void updateDate();
+    }
+
+    refreshDownload();
   }
 
-  // ---------------------------------------------
-  // READ PHOTO METADATA
-  // ---------------------------------------------
-
-  async function readMetadata(file, requestId) {
+  async function fetchMetadata(chosen, token) {
     const controller = new AbortController();
 
-    metadataController = controller;
-    metadataPending = true;
+    metaAbort = controller;
+    metaPending = true;
 
     const form = new FormData();
 
     form.append(
-      "file",
-      file,
-      file.name
+      'file',
+      chosen,
+      chosen.name
     );
 
-    log.info(
-      "Reading EXIF metadata",
-      { file: file.name }
-    );
+    metadataNotice('Reading camera details…');
 
     try {
       const response = await fetch(
-        "/api/image/metadata",
+        '/api/image/metadata',
         {
-          method: "POST",
+          method: 'POST',
           body: form,
-          signal: controller.signal,
+          signal: controller.signal
         }
       );
 
@@ -750,573 +1079,1026 @@
 
       if (!response.ok) {
         throw new Error(
-          typeof data.detail === "string"
+          typeof data.detail === 'string'
             ? data.detail
             : `HTTP ${response.status}`
         );
       }
 
-      if (requestId !== uploadId) return;
-
-      if (data.captured_at) {
-        if (!manualDateEdited) {
-          ui.photoDateTime.value =
-            data.captured_at.slice(0, 16);
-        }
-
-        ui.dateHelp.textContent = manualDateEdited
-          ? "EXIF date found. Your manual changes have been preserved."
-          : `Capture date from ${data.date_source || "EXIF"}. You may edit it.`;
-
-      } else {
-        if (!manualDateEdited) {
-          ui.photoDateTime.value = "";
-        }
-
-        ui.dateHelp.textContent =
-          "No original capture time found. Enter the correct date manually.";
+      if (token !== photoRequest) {
+        return;
       }
 
-      void updateDatePreview();
+      if (!manualDateEdited) {
+        ui.photoDateTime.value =
+          (data.captured_at || '').slice(0, 16);
+      }
 
-      const dimensions =
-        data.display_width && data.display_height
-          ? `${data.display_width} × ${data.display_height}`
-          : "Size unavailable";
+      ui.dateHelp.textContent =
+        data.captured_at
+          ? 'Camera capture time detected; editable here.'
+          : 'No EXIF date found. Enter the date manually.';
 
-      const gps =
+      gpsText = (
         data.gps &&
         Number.isFinite(Number(data.gps.latitude)) &&
         Number.isFinite(Number(data.gps.longitude))
-          ? ` · GPS: ${Number(data.gps.latitude).toFixed(5)}, ${Number(data.gps.longitude).toFixed(5)}`
-          : " · No GPS";
+      )
+        ? (
+          `${Number(data.gps.latitude).toFixed(5)}, ` +
+          `${Number(data.gps.longitude).toFixed(5)}`
+        )
+        : '';
 
-      metadataStatus(
+      updateLocation();
+
+      metadataNotice(
         data.captured_at
-          ? "Original capture date detected"
-          : "No EXIF capture date",
-        `${data.image_format || "Image"} · ${dimensions} · ` +
-        `Orientation ${data.orientation || 1}${gps}`,
+          ? 'Camera date detected'
+          : 'No EXIF date detected',
+        (
+          `${data.image_format || 'Photo'} · ` +
+          `${data.display_width || '?'} × ` +
+          `${data.display_height || '?'}`
+        ),
         Array.isArray(data.warnings)
-          ? data.warnings.join(" ")
-          : ""
+          ? data.warnings.join(' ')
+          : ''
       );
 
-      log.info("Metadata parsed", {
-        source: data.date_source,
-        date: data.captured_at || null,
-      });
+      void updateDate();
 
     } catch (error) {
       if (
         controller.signal.aborted ||
-        requestId !== uploadId
+        token !== photoRequest
       ) {
         return;
       }
 
       if (!manualDateEdited) {
-        ui.photoDateTime.value = "";
+        ui.photoDateTime.value = '';
       }
 
       ui.dateHelp.textContent =
-        "Metadata unavailable. Enter the photo date manually.";
+        'Metadata unavailable. Enter a date manually.';
 
-      void updateDatePreview();
-
-      metadataStatus(
-        "Metadata request failed",
-        "Manual date entry is available.",
-        error.message || "Check the API server.",
-        true
+      metadataNotice(
+        'Could not read camera details',
+        error.message
       );
 
-      log.error(
-        "Metadata API failed:",
-        error
-      );
+      void updateDate();
 
     } finally {
-      if (requestId === uploadId) {
-        metadataPending = false;
-        metadataController = null;
+      if (token === photoRequest) {
+        metaAbort = null;
+        metaPending = false;
       }
     }
   }
 
-  // ---------------------------------------------
-  // LOAD PHOTO
-  // ---------------------------------------------
+  // --------------------------------------------------
+  // PHOTO UPLOAD
+  // --------------------------------------------------
 
-  function loadPhoto(file) {
-    if (!file) return;
+  function loadPhoto(chosen) {
+    if (!chosen) return;
+
+    const allowed =
+      /\.(jpg|jpeg|png|webp|heic|heif)$/i;
+
+    const imageTypes = [
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/heic',
+      'image/heif'
+    ];
 
     if (
-      !IMAGE_TYPES.has(file.type) &&
-      !IMAGE_EXTENSIONS.test(file.name)
+      !allowed.test(chosen.name) &&
+      !imageTypes.includes(chosen.type)
     ) {
       ui.uploadMessage.textContent =
-        "Choose a JPEG, PNG, WebP, HEIC, or HEIF image.";
+        'Choose a JPEG, PNG, WebP, or HEIC photo.';
+
       return;
     }
 
-    if (!file.size || file.size > MAX_BYTES) {
-      ui.uploadMessage.textContent = file.size
-        ? "Maximum image size is 50 MB."
-        : "The file is empty.";
+    if (
+      !chosen.size ||
+      chosen.size > 50 * 1024 * 1024
+    ) {
+      ui.uploadMessage.textContent =
+        'Photo must be between 1 byte and 50 MB.';
 
       return;
     }
 
     clearPhoto(false);
 
-    photoFile = file;
+    file = chosen;
+    const token = photoRequest;
 
-    const requestId = uploadId;
+    ui.photoDateTime.value = '';
+    void updateDate();
 
-    ui.photoDateTime.value = "";
+    ui.fileName.textContent = chosen.name;
 
-    ui.dateHelp.textContent =
-      "Reading original photo metadata…";
+    ui.fileDetails.textContent =
+      `${(chosen.size / 1048576).toFixed(2)} MB`;
 
-    void updateDatePreview();
+    ui.removePhoto.disabled = false;
 
-    ui.fileName.textContent = file.name;
-    ui.fileDetails.textContent = sizeLabel(file.size);
+    objectUrl = URL.createObjectURL(chosen);
+    const url = objectUrl;
 
-    ui.fileSummary.hidden = false;
-
-    metadataStatus(
-      "Reading EXIF metadata…",
-      "Your image is not permanently stored."
-    );
-
-    photoUrl = URL.createObjectURL(file);
-
-    const thisUrl = photoUrl;
-
-    // Image loaded successfully.
     ui.photoPreview.onload = () => {
       if (
-        requestId !== uploadId ||
-        photoUrl !== thisUrl
+        token !== photoRequest ||
+        url !== objectUrl
       ) {
         return;
       }
-
-      ui.fileDetails.textContent =
-        `${sizeLabel(file.size)} · ` +
-        `${ui.photoPreview.naturalWidth} × ` +
-        `${ui.photoPreview.naturalHeight}`;
 
       ui.photoFrame.hidden = false;
       ui.emptyPreview.hidden = true;
 
-      log.info(
-        "Image preview ready",
-        { name: file.name }
-      );
+      ui.fileDetails.textContent =
+        `${ui.photoPreview.naturalWidth} × ` +
+        `${ui.photoPreview.naturalHeight} · ` +
+        `${(chosen.size / 1048576).toFixed(2)} MB`;
+
+      scheduleLayout();
+      refreshDownload();
     };
 
-    // Image could not be decoded by browser.
     ui.photoPreview.onerror = () => {
-      if (
-        requestId !== uploadId ||
-        photoUrl !== thisUrl
-      ) {
+      if (token !== photoRequest) {
         return;
       }
 
-      ui.photoFrame.hidden = true;
-      ui.emptyPreview.hidden = false;
-
       ui.uploadMessage.textContent =
-        "Your browser cannot preview this format " +
-        "(often HEIC). Metadata may still work.";
+        'Browser cannot preview this image type. ' +
+        'Try JPEG or PNG.';
+    };
 
-      log.warn(
-        "Image preview could not be decoded",
-        {
-          name: file.name,
-          type: file.type,
+    ui.photoPreview.src = url;
+
+    void fetchMetadata(chosen, token);
+  }
+
+  // --------------------------------------------------
+  // RESPONSIVE PREVIEW HEIGHT — VERSION 1.5.1
+  // --------------------------------------------------
+
+  function updatePreviewHeight() {
+    const css = getComputedStyle(
+      ui.previewStage
+    );
+
+    const available =
+      ui.previewStage.clientHeight -
+      parseFloat(css.paddingTop || 0) -
+      parseFloat(css.paddingBottom || 0);
+
+    ui.previewStage.style.setProperty(
+      '--fit-photo-height',
+      `${Math.max(24, available)}px`
+    );
+
+    scheduleLayout();
+  }
+
+  // --------------------------------------------------
+  // FIT LONG TEXT INSIDE THE PHOTO
+  // --------------------------------------------------
+
+  function fitPreviewText(element, maxWidth) {
+    if (
+      element.hidden ||
+      !element.textContent
+    ) {
+      return;
+    }
+
+    element.style.fontSize = '';
+
+    let size = parseFloat(
+      getComputedStyle(element).fontSize
+    );
+
+    while (
+      element.scrollWidth > maxWidth &&
+      size > 7
+    ) {
+      size = Math.max(
+        7,
+        size - 0.5
+      );
+
+      element.style.fontSize = `${size}px`;
+    }
+  }
+
+  // --------------------------------------------------
+  // THREE INDEPENDENT WATERMARK POSITIONS
+  // --------------------------------------------------
+
+  function frameSize() {
+    const rect =
+      ui.photoPreview.getBoundingClientRect();
+
+    return {
+      w: rect.width,
+      h: rect.height
+    };
+  }
+
+  function place(name, x, y) {
+    const el = els[name];
+    const { w, h } = frameSize();
+
+    if (!w || !h || el.hidden) {
+      return;
+    }
+
+    const bounds =
+      el.getBoundingClientRect();
+
+    const maxX = Math.max(
+      0,
+      1 - bounds.width / w
+    );
+
+    const maxY = Math.max(
+      0,
+      1 - bounds.height / h
+    );
+
+    const px = clamp(x, 0, maxX);
+    const py = clamp(y, 0, maxY);
+
+    el.style.left = `${px * 100}%`;
+    el.style.top = `${py * 100}%`;
+
+    return {
+      x: px,
+      y: py
+    };
+  }
+
+  function layout() {
+    layoutQueued = false;
+
+    if (ui.photoFrame.hidden) {
+      return;
+    }
+
+    const { w, h } = frameSize();
+
+    if (!w || !h) {
+      return;
+    }
+
+    const marginX = w * 0.035;
+    const marginY = h * 0.035;
+    const gap = 3;
+
+    const sig = els.signature;
+    const dt = els.date;
+    const loc = els.location;
+
+    // Keep both text layers inside narrow previews.
+    fitPreviewText(dt, w * 0.92);
+    fitPreviewText(loc, w * 0.92);
+
+    const dw = dt.offsetWidth;
+    const dh = dt.offsetHeight;
+    const sw = sig.offsetWidth;
+    const sh = sig.offsetHeight;
+
+    const alignment =
+      selected('alignment') || 'left';
+
+    const alignX = elWidth => {
+      if (alignment === 'left') {
+        return marginX;
+      }
+
+      if (alignment === 'center') {
+        return (w - elWidth) / 2;
+      }
+
+      return w - marginX - elWidth;
+    };
+
+    const defaultDate = {
+      x: alignX(dw) / w,
+      y: (h - marginY - dh) / h
+    };
+
+    const defaultSig = {
+      x: alignX(sw) / w,
+      y: (
+        h - marginY - dh - gap - sh
+      ) / h
+    };
+
+    const datePos =
+      positions.date || defaultDate;
+
+    const sigPos =
+      positions.signature || defaultSig;
+
+    place(
+      'signature',
+      sigPos.x,
+      sigPos.y
+    );
+
+    place(
+      'date',
+      datePos.x,
+      datePos.y
+    );
+
+    if (!loc.hidden) {
+      const lw = loc.offsetWidth;
+      const lh = loc.offsetHeight;
+
+      const defaultLoc = {
+        x: (w - marginX - lw) / w,
+        y: (h - marginY - lh) / h
+      };
+
+      const locPos =
+        positions.location || defaultLoc;
+
+      if (!positions.location) {
+        // Avoid overlap when date is right-aligned.
+        const dateLeft = datePos.x * w;
+        const dateRight = dateLeft + dw;
+        const locLeft = defaultLoc.x * w;
+
+        if (
+          dateRight > locLeft &&
+          dateLeft < locLeft + lw &&
+          alignment === 'right'
+        ) {
+          defaultLoc.y = Math.max(
+            0,
+            (
+              sigPos.y * h - lh - gap
+            ) / h
+          );
         }
+      }
+
+      place(
+        'location',
+        locPos.x,
+        locPos.y
+      );
+    }
+  }
+
+  function scheduleLayout() {
+    if (layoutQueued) {
+      return;
+    }
+
+    layoutQueued = true;
+    requestAnimationFrame(layout);
+  }
+
+  function resetLayout() {
+    for (const name of Object.keys(positions)) {
+      positions[name] = null;
+    }
+
+    scheduleLayout();
+  }
+
+  // --------------------------------------------------
+  // DRAG ELEMENTS USING MOUSE OR TOUCH
+  // --------------------------------------------------
+
+  function startDrag(event) {
+    if (
+      !ui.freeMove.checked ||
+      ui.photoFrame.hidden ||
+      event.button > 0
+    ) {
+      return;
+    }
+
+    const element = event.currentTarget;
+    const name = element.dataset.drag;
+
+    if (element.hidden) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const original =
+      element.getBoundingClientRect();
+
+    const { w, h } = frameSize();
+
+    const frameRect =
+      ui.photoFrame.getBoundingClientRect();
+
+    const offsetX =
+      event.clientX - original.left;
+
+    const offsetY =
+      event.clientY - original.top;
+
+    try {
+      element.setPointerCapture(
+        event.pointerId
+      );
+    } catch {
+      // Pointer capture may be unavailable.
+    }
+
+    const move = e => {
+      const left =
+        e.clientX -
+        frameRect.left -
+        offsetX;
+
+      const top =
+        e.clientY -
+        frameRect.top -
+        offsetY;
+
+      positions[name] = place(
+        name,
+        left / w,
+        top / h
       );
     };
 
-    ui.photoPreview.src = thisUrl;
+    const done = () => {
+      element.removeEventListener(
+        'pointermove',
+        move
+      );
 
-    log.info("Photo selected", {
-      name: file.name,
-      type: file.type,
-      bytes: file.size,
-    });
+      element.removeEventListener(
+        'pointerup',
+        done
+      );
 
-    void readMetadata(file, requestId);
-  }
-
-
-  // ---------------------------------------------
-  // STEP 5: EXPORT WATERMARKED IMAGE
-  // ---------------------------------------------
-
-  // Use the preview's measured sizes and offsets so the
-  // backend scales them to the photograph's full resolution.
-  function getWatermarkGeometry() {
-    const photo = ui.photoPreview.getBoundingClientRect();
-    const signature = ui.signaturePreview.getBoundingClientRect();
-    const watermarkStyle = getComputedStyle(ui.watermark);
-    const dateStyle = getComputedStyle(ui.watermarkDate);
-
-    if (!photo.width || !photo.height || !signature.width) {
-      throw new Error("The photo and signature preview must load first.");
-    }
-
-    const ratios = {
-      signature_width_ratio: signature.width / photo.width,
-      font_size_ratio: parseFloat(dateStyle.fontSize) / photo.width,
-      left_ratio: parseFloat(watermarkStyle.left) / photo.width,
-      bottom_ratio: parseFloat(watermarkStyle.bottom) / photo.height,
-      gap_ratio: (parseFloat(watermarkStyle.rowGap || watermarkStyle.gap) || 0) / photo.height,
+      element.removeEventListener(
+        'pointercancel',
+        done
+      );
     };
 
-    if (Object.values(ratios).some(v => !Number.isFinite(v) || v < 0)) {
-      throw new Error("Unable to measure the preview proportions.");
-    }
+    element.addEventListener(
+      'pointermove',
+      move
+    );
 
-    return ratios;
+    element.addEventListener(
+      'pointerup',
+      done
+    );
+
+    element.addEventListener(
+      'pointercancel',
+      done
+    );
   }
 
-  async function downloadFinalImage() {
-    if (ui.downloadButton.disabled || !photoFile || !selectedDate()) return;
+  // --------------------------------------------------
+  // DOWNLOAD BUTTON
+  // --------------------------------------------------
 
-    const originalFile = photoFile;
+  function refreshDownload() {
+    ui.downloadButton.disabled = !(
+      file &&
+      !ui.photoFrame.hidden &&
+      !ui.signaturePreview.hidden &&
+      ui.signaturePreview.naturalWidth > 0 &&
+      dateReady &&
+      !exporting
+    );
+  }
+
+  function geometry() {
+    const photo =
+      ui.photoPreview.getBoundingClientRect();
+
+    if (!photo.width || !photo.height) {
+      throw new Error(
+        'Photo preview is not ready.'
+      );
+    }
+
+    const rect = name =>
+      els[name].getBoundingClientRect();
+
+    const xy = name => {
+      const r = rect(name);
+
+      return {
+        x: clamp(
+          (r.left - photo.left) / photo.width,
+          0,
+          1
+        ),
+        y: clamp(
+          (r.top - photo.top) / photo.height,
+          0,
+          1
+        )
+      };
+    };
+
+    const sign = xy('signature');
+    const date = xy('date');
+    const loc = xy('location');
+
+    return {
+      signature_width_ratio:
+        rect('signature').width / photo.width,
+
+      font_size_ratio:
+        parseFloat(
+          getComputedStyle(els.date).fontSize
+        ) / photo.width,
+
+      location_font_size_ratio:
+        parseFloat(
+          getComputedStyle(els.location).fontSize
+        ) / photo.width,
+
+      signature_x: sign.x,
+      signature_y: sign.y,
+
+      date_x: date.x,
+      date_y: date.y,
+
+      location_x: loc.x,
+      location_y: loc.y
+    };
+  }
+
+  // --------------------------------------------------
+  // FINAL IMAGE EXPORT
+  // --------------------------------------------------
+
+  async function download() {
+    if (
+      ui.downloadButton.disabled ||
+      !file
+    ) {
+      return;
+    }
+
     exporting = true;
-    refreshDownloadButton();
-    ui.downloadLabel.textContent = "Rendering photograph…";
-    ui.downloadStatus.textContent = "Creating your full-resolution image…";
+    refreshDownload();
+
+    ui.downloadLabel.textContent =
+      'Rendering image…';
+
+    ui.downloadStatus.textContent =
+      'Preparing full-resolution photo…';
 
     try {
       const form = new FormData();
-      form.append("file", originalFile, originalFile.name);
-      form.append("captured_at", ui.photoDateTime.value);
-      form.append("language", choice("language") || "en");
-      form.append("calendar", choice("calendar") || "gregorian");
-      form.append("signature", choice("signature") || "light");
-      form.append("bold", String(ui.boldDate.checked));
 
-      const geometry = getWatermarkGeometry();
-      for (const [key, value] of Object.entries(geometry)) {
-        form.append(key, String(value));
+      form.append(
+        'file',
+        file,
+        file.name
+      );
+
+      const data = {
+        captured_at: ui.photoDateTime.value,
+        language: selected('language'),
+        calendar: selected('calendar'),
+        signature: selected('signature'),
+
+        bold: String(
+          ui.boldDate.checked
+        ),
+
+        font_name:
+          activeFont[selected('language')] || '',
+
+        location_font_name:
+          activeFont[locationLanguage()] || '',
+
+        location_text: currentLocation(),
+
+        date_text: ui.dateText.value.trim(),
+
+        ...geometry()
+      };
+
+      for (
+        const [key, value] of Object.entries(data)
+      ) {
+        form.append(
+          key,
+          String(value)
+        );
       }
 
-      log.info("Starting watermark export", {
-        file: originalFile.name,
-        geometry
-      });
-
-      const response = await fetch("/api/image/render", {
-        method: "POST",
-        body: form,
-      });
+      const response = await fetch(
+        '/api/image/render',
+        {
+          method: 'POST',
+          body: form
+        }
+      );
 
       if (!response.ok) {
-        let message = `Render failed (HTTP ${response.status}).`;
+        let msg =
+          `Rendering failed: HTTP ${response.status}`;
 
         try {
-          const result = await response.json();
+          const body = await response.json();
 
-          if (typeof result.detail === "string") {
-            message = result.detail;
+          if (typeof body.detail === 'string') {
+            msg = body.detail;
           }
         } catch {
-          // Keep HTTP message when server error is not JSON.
+          // Retain HTTP status on non-JSON errors.
         }
 
-        throw new Error(message);
+        throw new Error(msg);
       }
 
       const mime = (
-        response.headers.get("content-type") || ""
-      ).split(";")[0];
+        response.headers.get(
+          'content-type'
+        ) || ''
+      ).split(';')[0];
 
-      if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
-        throw new Error("The server returned an unsupported image format.");
+      const supported = [
+        'image/jpeg',
+        'image/png',
+        'image/webp'
+      ];
+
+      if (!supported.includes(mime)) {
+        throw new Error(
+          'Invalid image response from server.'
+        );
       }
 
-      const output = await response.blob();
+      const blob = await response.blob();
 
-      if (!output.size) {
-        throw new Error("The exported image is empty.");
+      if (!blob.size) {
+        throw new Error(
+          'Output image is empty.'
+        );
       }
 
-      const ext = mime === "image/png"
-        ? "png"
-        : mime === "image/webp"
-          ? "webp"
-          : "jpg";
+      const ext =
+        mime === 'image/png'
+          ? 'png'
+          : mime === 'image/webp'
+            ? 'webp'
+            : 'jpg';
 
-      const name = originalFile.name
-        .replace(/\.[^.]+$/, "")
-        .replace(/[^a-zA-Z0-9_-]+/g, "_")
-        .slice(0, 65) || "photo";
+      const name = (
+        file.name
+          .replace(/\.[^.]+$/, '')
+          .replace(/[^A-Za-z0-9_-]+/g, '_')
+          .slice(0, 70) || 'photo'
+      ) + `_watermarked.${ext}`;
 
-      const downloadName = `${name}_watermarked.${ext}`;
+      const url =
+        URL.createObjectURL(blob);
 
-      const url = URL.createObjectURL(output);
-      const link = document.createElement("a");
+      const anchor =
+        document.createElement('a');
 
-      link.href = url;
-      link.download = downloadName;
+      anchor.href = url;
+      anchor.download = name;
 
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      document.body.append(anchor);
 
-      // Allow time for browsers to start the download.
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      anchor.click();
+      anchor.remove();
+
+      setTimeout(
+        () => URL.revokeObjectURL(url),
+        30000
+      );
 
       ui.downloadStatus.textContent =
-        `Download started: ${downloadName}`;
+        `Download started: ${name}`;
 
-      log.info("Export ready", {
-        name: downloadName,
-        bytes: output.size
-      });
+      log(
+        'Rendered image',
+        blob.size,
+        'bytes',
+        data
+      );
 
     } catch (error) {
       ui.downloadStatus.textContent =
-        error.message || "Download failed.";
+        error.message;
 
-      log.error("Watermark download failed", error);
+      console.error(
+        '[BengaliWatermark] Export:',
+        error
+      );
 
     } finally {
       exporting = false;
-      ui.downloadLabel.textContent = "Download final image";
-      refreshDownloadButton();
+
+      ui.downloadLabel.textContent =
+        'Download photograph';
+
+      refreshDownload();
     }
   }
 
+  // --------------------------------------------------
+  // PORTRAIT ORIENTATION SUGGESTION
+  // --------------------------------------------------
 
-  // ---------------------------------------------
-  // FILE INPUT EVENTS
-  // ---------------------------------------------
+  const advancedPanel = $('advancedPanel');
+
+  const portraitMode =
+    window.matchMedia('(orientation: portrait)');
+
+  let orientationHintDismissed = false;
+
+  function refreshOrientationTip() {
+    if (!ui.orientationTip) return;
+
+    ui.orientationTip.hidden = !(
+      advancedPanel.open &&
+      portraitMode.matches &&
+      !orientationHintDismissed
+    );
+  }
+
+  advancedPanel.addEventListener(
+    'toggle',
+    () => {
+      if (advancedPanel.open) {
+        orientationHintDismissed = false;
+      }
+
+      refreshOrientationTip();
+    }
+  );
+
+  portraitMode.addEventListener(
+    'change',
+    refreshOrientationTip
+  );
+
+  ui.dismissOrientationTip?.addEventListener(
+    'click',
+    () => {
+      orientationHintDismissed = true;
+      refreshOrientationTip();
+    }
+  );
+
+  // --------------------------------------------------
+  // EVENT LISTENERS
+  // --------------------------------------------------
+
+  ui.choosePhoto.addEventListener(
+    'click',
+    () => ui.photoInput.click()
+  );
+
+  ui.replacePhoto.addEventListener(
+    'click',
+    () => ui.photoInput.click()
+  );
 
   ui.photoInput.addEventListener(
-    "change",
-    event => {
-      const file = event.target.files?.[0];
-
-      if (file) {
-        loadPhoto(file);
-      }
-
-      // Allow selecting the same file again.
-      event.target.value = "";
-    }
-  );
-
-  ui.dropZone.addEventListener(
-    "click",
+    'change',
     () => {
-      ui.photoInput.click();
-    }
-  );
-
-  ui.dropZone.addEventListener(
-    "keydown",
-    event => {
-      if (
-        event.key === "Enter" ||
-        event.key === " "
-      ) {
-        event.preventDefault();
-        ui.photoInput.click();
-      }
-    }
-  );
-
-  // ---------------------------------------------
-  // DRAG AND DROP
-  // ---------------------------------------------
-
-  for (const type of [
-    "dragenter",
-    "dragover"
-  ]) {
-    ui.dropZone.addEventListener(
-      type,
-      event => {
-        event.preventDefault();
-
-        ui.dropZone.classList.add(
-          "drag-active"
+      if (ui.photoInput.files?.[0]) {
+        loadPhoto(
+          ui.photoInput.files[0]
         );
       }
-    );
-  }
-
-  for (const type of [
-    "dragleave",
-    "drop"
-  ]) {
-    ui.dropZone.addEventListener(
-      type,
-      event => {
-        event.preventDefault();
-
-        ui.dropZone.classList.remove(
-          "drag-active"
-        );
-      }
-    );
-  }
-
-  ui.dropZone.addEventListener(
-    "drop",
-    event => {
-      const file =
-        event.dataTransfer?.files?.[0];
-
-      if (file) {
-        loadPhoto(file);
-      }
     }
   );
-
-  for (const type of [
-    "dragover",
-    "drop"
-  ]) {
-    window.addEventListener(
-      type,
-      event => {
-        if (
-          event.dataTransfer?.types?.includes("Files")
-        ) {
-          event.preventDefault();
-        }
-      }
-    );
-  }
-
-  // ---------------------------------------------
-  // REMOVE PHOTO
-  // ---------------------------------------------
 
   ui.removePhoto.addEventListener(
-    "click",
+    'click',
     () => clearPhoto()
   );
 
-  // ---------------------------------------------
-  // MANUAL DATE CHANGES
-  // ---------------------------------------------
+  ui.previewStage.addEventListener(
+    'dragover',
+    e => e.preventDefault()
+  );
 
-  ui.photoDateTime.addEventListener(
-    "input",
-    () => {
-      if (metadataPending) {
-        manualDateEdited = true;
+  ui.previewStage.addEventListener(
+    'drop',
+    e => {
+      e.preventDefault();
+
+      if (e.dataTransfer?.files?.[0]) {
+        loadPhoto(
+          e.dataTransfer.files[0]
+        );
       }
-
-      void updateDatePreview();
     }
   );
 
-  // ---------------------------------------------
-  // LANGUAGE AND CALENDAR TOGGLES
-  // ---------------------------------------------
+  window.addEventListener(
+    'dragover',
+    e => {
+      if (
+        e.dataTransfer?.types?.includes('Files')
+      ) {
+        e.preventDefault();
+      }
+    }
+  );
+
+  window.addEventListener(
+    'drop',
+    e => {
+      if (
+        e.dataTransfer?.types?.includes('Files')
+      ) {
+        e.preventDefault();
+      }
+    }
+  );
+
+  ui.photoDateTime.addEventListener(
+    'input',
+    () => {
+      if (metaPending) {
+        manualDateEdited = true;
+      }
+
+      void updateDate();
+    }
+  );
+
+  ui.dateText.addEventListener(
+    'input',
+    () => void updateDate()
+  );
+
+  ui.locationText.addEventListener(
+    'input',
+    () => {
+      if (ui.locationText.value.trim()) {
+        ui.showLocation.checked = true;
+      }
+
+      updateLocation();
+    }
+  );
+
+  ui.showLocation.addEventListener(
+    'change',
+    updateLocation
+  );
+
+  ui.boldDate.addEventListener(
+    'change',
+    () => {
+      ui.watermarkDate.classList.toggle(
+        'is-bold',
+        ui.boldDate.checked
+      );
+
+      void applyFont();
+      scheduleLayout();
+    }
+  );
 
   document.querySelectorAll(
-    'input[name="language"], input[name="calendar"]'
+    'input[name="language"],input[name="calendar"]'
   ).forEach(input => {
     input.addEventListener(
-      "change",
-      updateControls
+      'change',
+      () => {
+        updateCalendarControls();
+        updateLocation();
+      }
     );
   });
-
-  // ---------------------------------------------
-  // SIGNATURE TOGGLE
-  // ---------------------------------------------
 
   document.querySelectorAll(
     'input[name="signature"]'
   ).forEach(input => {
     input.addEventListener(
-      "change",
+      'change',
       updateSignature
     );
   });
 
-  // ---------------------------------------------
-  // BOLD DATE TOGGLE
-  // ---------------------------------------------
+  document.querySelectorAll(
+    'input[name="alignment"]'
+  ).forEach(input => {
+    input.addEventListener(
+      'change',
+      resetLayout
+    );
+  });
 
-  ui.boldDate.addEventListener(
-    "change",
+  ui.freeMove.addEventListener(
+    'change',
     () => {
-      ui.watermarkDate.classList.toggle(
-        "is-bold",
-        ui.boldDate.checked
+      ui.photoFrame.classList.toggle(
+        'drag-enabled',
+        ui.freeMove.checked
       );
     }
   );
 
-  // NEW: Download button
-  ui.downloadButton.addEventListener(
-    "click", () => void downloadFinalImage()
+  ui.resetPosition.addEventListener(
+    'click',
+    resetLayout
   );
 
-  // Refresh button availability when the photo
-  // or signature finishes loading.
-  const downloadObserver = new MutationObserver(refreshDownloadButton);
+  for (const el of Object.values(els)) {
+    el.addEventListener(
+      'pointerdown',
+      startDrag
+    );
+  }
 
-  downloadObserver.observe(ui.photoFrame, {
-    attributes: true,
-    attributeFilter: ["hidden"]
-  });
+  ui.downloadButton.addEventListener(
+    'click',
+    () => void download()
+  );
 
-  downloadObserver.observe(ui.signaturePreview, {
-    attributes: true,
-    attributeFilter: ["hidden"]
-  });
+  // --------------------------------------------------
+  // RESPONSIVE RESIZE OBSERVERS
+  // --------------------------------------------------
 
-  // ---------------------------------------------
-  // CLEANUP
-  // ---------------------------------------------
+  if (
+    typeof ResizeObserver !== 'undefined'
+  ) {
+    new ResizeObserver(
+      scheduleLayout
+    ).observe(ui.photoPreview);
+
+    new ResizeObserver(
+      updatePreviewHeight
+    ).observe(ui.previewStage);
+  }
 
   window.addEventListener(
-    "pagehide",
-    () => {
-      metadataController?.abort();
-      dateController?.abort();
+    'resize',
+    updatePreviewHeight
+  );
 
-      if (photoUrl) {
-        URL.revokeObjectURL(photoUrl);
+  requestAnimationFrame(
+    updatePreviewHeight
+  );
+
+  // --------------------------------------------------
+  // CLEANUP
+  // --------------------------------------------------
+
+  window.addEventListener(
+    'pagehide',
+    () => {
+      dateAbort?.abort();
+      metaAbort?.abort();
+
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
       }
     }
   );
 
-  // ---------------------------------------------
-  // INITIALIZE
-  // ---------------------------------------------
-
-  // Today's date is only an initial example.
-  // Once a photo is uploaded, its EXIF date
-  // replaces this, when available.
+  // --------------------------------------------------
+  // STARTUP
+  // --------------------------------------------------
 
   ui.photoDateTime.value =
-    localDateTime(new Date());
+    localValue(new Date());
 
-  ui.watermarkDate.classList.toggle(
-    "is-bold",
-    ui.boldDate.checked
+  updateCalendarControls();
+  updateSignature();
+  updateLocation();
+  refreshDownload();
+
+  void fetchFonts();
+
+  log(
+    'Version 1.5.1 interface initialized'
   );
 
-  updateControls();
-  updateSignature();
-  refreshDownloadButton();
-
-  log.info("Step 5 frontend initialized");
 })();
