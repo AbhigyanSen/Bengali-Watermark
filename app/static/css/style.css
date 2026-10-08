@@ -144,22 +144,24 @@ h1 em { font-family: Georgia, serif; color: var(--accent); font-weight: 500; }
   max-width: 100%;
   font-size: clamp(9px, 1.15vw, 14px);
   line-height: 1.35;
-  font-weight: 400;
+  font-weight: 200;
   letter-spacing: 0;
   overflow-wrap: anywhere;
   color: var(--signature-text-color);
   text-shadow: none;
 }
 .watermark-date.is-bold { font-weight: 700; }
+
 .watermark-light { --signature-text-color: rgb(196, 188, 179); }
 .watermark-dark { --signature-text-color: rgb(39, 43, 47); }
 #signaturePreview {
   display: block;
-  width: clamp(100px, 20vw, 240px);
+  width: clamp(60px, 12vw, 150px);
   max-width: 70%;
   height: auto;
   object-fit: contain;
   object-position: left center;
+
 }
 #signaturePreview[hidden] { display: none; }
 .preview-footer { margin-top: 18px; }
