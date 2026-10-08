@@ -1,4 +1,4 @@
-"""Bengali Watermark Studio — API and frontend host (Step 03)."""
+"""Bengali Watermark Studio — API and frontend host (Step 04)."""
 
 import os
 from pathlib import Path
@@ -11,7 +11,7 @@ from app.routes.image import router as image_router
 
 APP_DIR = Path(__file__).resolve().parent
 
-app = FastAPI(title="Bengali Watermark Studio", version="0.3.0")
+app = FastAPI(title="Bengali Watermark Studio", version="0.4.0")
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 app.include_router(image_router, prefix="/api/image", tags=["images"])
 
@@ -23,7 +23,7 @@ def index():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "step": 3}
+    return {"status": "ok", "step": 4}
 
 
 if __name__ == "__main__":

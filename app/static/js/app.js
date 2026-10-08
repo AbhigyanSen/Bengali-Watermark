@@ -1,993 +1,1136 @@
 
 "use strict";
 
-// Step 03: image metadata is extracted by the FastAPI endpoint.
-// This frontend still previews layout only. Rendering/export and accurate
-// West Bengal Panjika conversion remain intentionally pending.
-
-const MONTHS_EN = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-const MONTHS_BN_GREGORIAN = [
-  "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন",
-    "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর",
-];
-
-const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
-
-// NEW: Browser console logging
-const DEBUG_PREFIX = "[BengaliWatermark]";
-
-const logger = {
-  info: (...args) => console.info(DEBUG_PREFIX, ...args),
-  debug: (...args) => console.debug(DEBUG_PREFIX, ...args),
-  warn: (...args) => console.warn(DEBUG_PREFIX, ...args),
-  error: (...args) => console.error(DEBUG_PREFIX, ...args),
-};
-
-const SUPPORTED_EXTENSIONS = /\.(jpe?g|png|webp|heic|heif)$/i;
-
-const elements = {
-  dropZone: document.querySelector("#dropZone"),
-  photoInput: document.querySelector("#photoInput"),
-  fileSummary: document.querySelector("#fileSummary"),
-  fileName: document.querySelector("#fileName"),
-  fileDetails: document.querySelector("#fileDetails"),
-  removePhoto: document.querySelector("#removePhoto"),
-  uploadMessage: document.querySelector("#uploadMessage"),
-  metadataPanel: document.querySelector("#metadataPanel"),
-  metadataStatus: document.querySelector("#metadataStatus"),
-  metadataDetails: document.querySelector("#metadataDetails"),
-  metadataWarnings: document.querySelector("#metadataWarnings"),
-  dateHelp: document.querySelector("#dateHelp"),
-  dateTime: document.querySelector("#photoDateTime"),
-  boldDate: document.querySelector("#boldDate"),
-  calendarHint: document.querySelector("#calendarHint"),
-  formattedDate: document.querySelector("#formattedDate"),
-  panjikaNotice: document.querySelector("#panjikaNotice"),
-  signatureStatus: document.querySelector("#signatureStatus"),
-  emptyPreview: document.querySelector("#emptyPreview"),
-  photoFrame: document.querySelector("#photoFrame"),
-  photoPreview: document.querySelector("#photoPreview"),
-  watermark: document.querySelector("#watermark"),
-  watermarkDate: document.querySelector("#watermarkDate"),
-  signaturePreview: document.querySelector("#signaturePreview"),
-};
-
-let currentObjectUrl = null;
-let signatureRequest = 0;
-let metadataRequest = 0;
-let metadataAbort = null;
-let metadataPending = false;
-let manualDateEdited = false;
-
-
-// --------------------------------------------------
-// Bengali digit conversion
-// --------------------------------------------------
-
-function toBengaliDigits(value) {
-  return String(value).replace(
-    /[0-9]/g,
-    (digit) => BN_DIGITS[Number(digit)]
-  );
-}
-
-function pad2(number) {
-  return String(number).padStart(2, "0");
-}
-
-
-// --------------------------------------------------
-// Radio button helpers
-// --------------------------------------------------
-
-function getSelected(name) {
-  return document.querySelector(
-    `input[name="${name}"]:checked`
-  )?.value;
-}
-
-function setSelected(name, value) {
-  const input = document.querySelector(
-    `input[name="${name}"][value="${value}"]`
-  );
-
-  if (input) {
-    input.checked = true;
-  }
-}
-
-elements.boldDate.addEventListener("change", () => {
-  elements.watermarkDate.classList.toggle(
-    "is-bold",
-    elements.boldDate.checked
-  );
-});
-
-// --------------------------------------------------
-// Date and time helpers
-// --------------------------------------------------
-
-// Construct a local datetime-local value
-// without converting the time to UTC.
-
-function localDateTimeValue(date) {
-  return (
-    `${date.getFullYear()}-` +
-    `${pad2(date.getMonth() + 1)}-` +
-    `${pad2(date.getDate())}T` +
-    `${pad2(date.getHours())}:` +
-    `${pad2(date.getMinutes())}`
-  );
-}
-
-function getPreviewDate() {
-  const value = elements.dateTime.value;
-
-  if (!value) {
-    return null;
-  }
-
-  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-
-  if (!parts) {
-    return null;
-  }
-
-  const [, year, month, day, hour, minute] = parts.map(Number);
-
-  const parsed = new Date(
-    year,
-    month - 1,
-    day,
-    hour,
-    minute
-  );
-
-  if (
-    parsed.getFullYear() !== year ||
-    parsed.getMonth() !== month - 1 ||
-    parsed.getDate() !== day ||
-    parsed.getHours() !== hour ||
-    parsed.getMinutes() !== minute
-  ) {
-    return null;
-  }
-
-  return parsed;
-}
-
-
-// --------------------------------------------------
-// Bengali time period
-// --------------------------------------------------
-
-function bengaliDayPeriod(hour) {
-  if (hour >= 4 && hour < 6) {
-    return "ভোর";
-  }
-
-  if (hour >= 6 && hour < 12) {
-    return "সকাল";
-  }
-
-  if (hour >= 12 && hour < 15) {
-    return "দুপুর";
-  }
-
-  if (hour >= 15 && hour < 18) {
-    return "বিকেল";
-  }
-
-  if (hour >= 18 && hour < 20) {
-    return "সন্ধ্যা";
-  }
-
-  return "রাত";
-}
-
-
-// --------------------------------------------------
-// Date formatting
-// --------------------------------------------------
-
-function formatDate(date, language, calendar) {
-  if (!date) {
-    return "Select a valid preview date and time";
-  }
-
-  const h12 = date.getHours() % 12 || 12;
-
-  // English Gregorian calendar
-  if (language === "en") {
-    const amPm = date.getHours() < 12 ? "AM" : "PM";
-
-    return (
-      `${MONTHS_EN[date.getMonth()]} ` +
-      `${pad2(date.getDate())}, ` +
-      `${date.getFullYear()} · ` +
-      `${h12}:${pad2(date.getMinutes())} ${amPm}`
-    );
-  }
-
-  // Traditional West Bengal Panjika
-  // Accurate conversion will be implemented in Step 04.
-  if (calendar === "panjika") {
-    return (
-      `পঞ্জিকা তারিখ ধাপ ৪-এ যুক্ত হবে · ` +
-      `${bengaliDayPeriod(date.getHours())} ` +
-      `${toBengaliDigits(h12)}:` +
-      `${toBengaliDigits(pad2(date.getMinutes()))}`
-    );
-  }
-
-  // Bengali language with Gregorian date
-  // Time uses the 24-hour format.
-
-  return (
-    `${toBengaliDigits(date.getDate())} ` +
-    `${MONTHS_BN_GREGORIAN[date.getMonth()]}, ` +
-    `${toBengaliDigits(date.getFullYear())} · ` +
-    `${toBengaliDigits(pad2(date.getHours()))}:` +
-    `${toBengaliDigits(pad2(date.getMinutes()))}`
-  );
-}
-
-
-// --------------------------------------------------
-// Language and calendar controls
-// --------------------------------------------------
-
-function updateControls() {
-  const language = getSelected("language");
-
-  const panjikaInput = document.querySelector(
-    'input[name="calendar"][value="panjika"]'
-  );
-
-  const bengali = language === "bn";
-
-  panjikaInput.disabled = !bengali;
-
-  if (!bengali) {
-    setSelected("calendar", "gregorian");
-  }
-
-  elements.calendarHint.textContent = bengali
-    ? "West Bengal / Indian traditional Panjika (not Bangladesh)."
-    : "Switch to বাংলা to select the traditional Bengali calendar.";
-
-  elements.panjikaNotice.hidden = !(
-    bengali &&
-    getSelected("calendar") === "panjika"
-  );
-
-  updateDatePreview();
-}
-
-
-// --------------------------------------------------
-// Live date preview
-// --------------------------------------------------
-
-function updateDatePreview() {
-  const value = formatDate(
-    getPreviewDate(),
-    getSelected("language"),
-    getSelected("calendar")
-  );
-
-  elements.formattedDate.textContent = value;
-  elements.watermarkDate.textContent = value;
-
-  const isBn = getSelected("language") === "bn";
-
-  elements.formattedDate.lang = isBn ? "bn" : "en";
-  elements.watermarkDate.lang = isBn ? "bn" : "en";
-}
-
-
-// --------------------------------------------------
-// Signature preview
-// --------------------------------------------------
-
-// Extract signature color and remove transparent padding.
-// Original PNG files are never modified.
-
-function analyzeSignature(image) {
-  const canvas = document.createElement("canvas");
-
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
-
-  const ctx = canvas.getContext("2d", {
-    willReadFrequently: true
-  });
-
-  if (!ctx) {
-    return { croppedUrl: image.src, color: null };
-  }
-
-  ctx.drawImage(image, 0, 0);
-
-  const { data } = ctx.getImageData(
-    0, 0, canvas.width, canvas.height
-  );
-
-  let left = canvas.width;
-  let top = canvas.height;
-  let right = -1;
-  let bottom = -1;
-
-  const red = new Float64Array(256);
-  const green = new Float64Array(256);
-  const blue = new Float64Array(256);
-
-  let total = 0;
-
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      const at = 4 * (y * canvas.width + x);
-      const alpha = data[at + 3];
-
-      if (alpha >= 32) {
-        left = Math.min(left, x);
-        top = Math.min(top, y);
-        right = Math.max(right, x);
-        bottom = Math.max(bottom, y);
-      }
-
-      if (alpha >= 96) {
-        red[data[at]] += alpha;
-        green[data[at + 1]] += alpha;
-        blue[data[at + 2]] += alpha;
-        total += alpha;
-      }
-    }
-  }
-
-  if (right < left || bottom < top) {
-    logger.warn("Signature has no visible pixels");
-    return { croppedUrl: image.src, color: null };
-  }
-
-  function weightedMedian(histogram) {
-    let running = 0;
-
-    for (let i = 0; i < 256; i++) {
-      running += histogram[i];
-
-      if (running >= total / 2) {
-        return i;
-      }
-    }
-
-    return 0;
-  }
-
-  const color = total > 0
-    ? `rgb(${weightedMedian(red)}, ${weightedMedian(green)}, ${weightedMedian(blue)})`
-    : null;
-
-  const pad = Math.max(
-    3,
-    Math.ceil(Math.min(canvas.width, canvas.height) * 0.01)
-  );
-
-  left = Math.max(0, left - pad);
-  top = Math.max(0, top - pad);
-  right = Math.min(canvas.width - 1, right + pad);
-  bottom = Math.min(canvas.height - 1, bottom + pad);
-
-  const width = right - left + 1;
-  const height = bottom - top + 1;
-
-  const cropped = document.createElement("canvas");
-  cropped.width = width;
-  cropped.height = height;
-
-  cropped.getContext("2d").drawImage(
-    canvas,
-    left, top, width, height,
-    0, 0, width, height
-  );
-
-  logger.debug("Signature analyzed", {
-    source: `${canvas.width}x${canvas.height}`,
-    cropped: `${width}x${height}`,
-    ink: color
-  });
-
-  return {
-    croppedUrl: cropped.toDataURL("image/png"),
-    color
-  };
-}
-
-function updateSignature() {
-  const choice = getSelected("signature") || "light";
-  const file = `signature_${choice}.png`;
-  const request = ++signatureRequest;
-  const image = elements.signaturePreview;
-
-  elements.watermark.classList.toggle(
-    "watermark-light", choice === "light"
-  );
-
-  elements.watermark.classList.toggle(
-    "watermark-dark", choice === "dark"
-  );
-
-  elements.watermark.style.removeProperty(
-    "--signature-text-color"
-  );
-
-  image.hidden = true;
-  image.removeAttribute("src");
-
-  elements.signatureStatus.textContent = `Loading ${file}…`;
-
-  logger.info("Signature selected", { style: choice });
-
-  const source = new Image();
-
-  source.onload = () => {
-    if (request !== signatureRequest) return;
-
-    let appearance;
-
-    try {
-      appearance = analyzeSignature(source);
-    } catch (error) {
-      logger.warn("Signature analysis failed", error);
-
-      appearance = {
-        croppedUrl: source.src,
-        color: null
-      };
-    }
-
-    if (appearance.color) {
-      elements.watermark.style.setProperty(
-        "--signature-text-color",
-        appearance.color
-      );
-    }
-
-    image.onload = () => {
-      if (request !== signatureRequest) return;
-
-      image.hidden = false;
-
-      elements.signatureStatus.textContent =
-        `Loaded ${file}; date color matched to signature ink.`;
-
-      logger.info("Signature ready", {
-        file,
-        ink: appearance.color
-      });
-    };
-
-    image.onerror = () => {
-      if (request !== signatureRequest) return;
-
-      image.hidden = true;
-      elements.signatureStatus.textContent =
-        `Could not display ${file}.`;
-
-      logger.error("Signature preview failed", { file });
-    };
-
-    image.src = appearance.croppedUrl;
+// Bengali Watermark Studio — Step 4.
+// Compatible with Step 4 HTML, CSS, and FastAPI endpoints.
+// Final image download will be connected in Step 5.
+
+(() => {
+  const LOG = "[BengaliWatermark]";
+
+  const log = {
+    info: (...args) => console.info(LOG, ...args),
+    warn: (...args) => console.warn(LOG, ...args),
+    error: (...args) => console.error(LOG, ...args),
   };
 
-  source.onerror = () => {
-    if (request !== signatureRequest) return;
+  const EN_MONTHS = [
+    "January", "February", "March", "April",
+    "May", "June", "July", "August",
+    "September", "October", "November", "December",
+  ];
 
-    image.hidden = true;
+  const BN_MONTHS = [
+    "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল",
+    "মে", "জুন", "জুলাই", "আগস্ট",
+    "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর",
+  ];
 
-    elements.signatureStatus.textContent =
-      `Missing ${file} in app/static/images/.`;
+  const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
+  const MAX_BYTES = 50 * 1024 * 1024;
+  const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|heic|heif)$/i;
 
-    logger.warn("Signature asset missing", { file });
-  };
-
-  source.src = `../static/images/${file}`;
-}
-
-
-// --------------------------------------------------
-// Human-readable file size
-// --------------------------------------------------
-
-function humanSize(bytes) {
-  return bytes >= 1024 * 1024
-    ? `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-    : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
-}
-
-
-// --------------------------------------------------
-// Metadata request management
-// --------------------------------------------------
-
-function resetMetadataRequest() {
-  ++metadataRequest;
-
-  if (metadataAbort) {
-    metadataAbort.abort();
-  }
-
-  metadataAbort = null;
-  metadataPending = false;
-}
-
-
-// --------------------------------------------------
-// Metadata status messages
-// --------------------------------------------------
-
-function metadataNotice(
-  title,
-  details = "",
-  warnings = "",
-  isError = false
-) {
-  elements.metadataPanel.hidden = false;
-
-  elements.metadataPanel.classList.toggle(
-    "is-error",
-    isError
-  );
-
-  elements.metadataStatus.textContent = title;
-  elements.metadataDetails.textContent = details;
-  elements.metadataWarnings.textContent = warnings;
-}
-
-
-// --------------------------------------------------
-// Extract image metadata using FastAPI
-// --------------------------------------------------
-
-async function readPhotoMetadata(file) {
-  const requestId = metadataRequest;
-
-  const controller = new AbortController();
-
-  metadataAbort = controller;
-  metadataPending = true;
-
-  const payload = new FormData();
-
-  payload.append("file", file, file.name);
-
-  try {
-    const response = await fetch(
-      "/api/image/metadata",
-      {
-        method: "POST",
-        body: payload,
-        signal: controller.signal,
-      }
-    );
-
-    let data;
-
-    try {
-      data = await response.json();
-    } catch {
-      throw new Error(
-        "Metadata service returned an invalid response."
-      );
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        data.detail ||
-        `Metadata request failed (${response.status}).`
-      );
-    }
-
-    // NEW: Log successful metadata response
-    logger.info("Metadata response", {
-      status: response.status,
-      hasTimestamp: Boolean(data.captured_at),
-      dateSource: data.date_source || null
-    });
-
-    // Ignore responses belonging to old uploads.
-    if (requestId !== metadataRequest) {
-      return;
-    }
-
-    // Automatically populate capture date.
-    if (data.captured_at) {
-      if (!manualDateEdited) {
-        elements.dateTime.value = data.captured_at;
-      }
-
-      elements.dateHelp.textContent = manualDateEdited
-        ? `EXIF ${data.date_source} detected. Your manually entered date/time was kept.`
-        : `Using EXIF ${data.date_source}. The camera's recorded time is not converted to the server timezone. You can edit it.`;
-    } else {
-      if (!manualDateEdited) {
-        elements.dateTime.value = "";
-      }
-
-      elements.dateHelp.textContent =
-        "No reliable photo date found. Please enter its date/time manually; we won't use today's date automatically.";
-    }
-
-    updateDatePreview();
-
-    // GPS details, if available.
-    const gps = data.gps
-      ? (
-          ` · GPS: ` +
-          `${Number(data.gps.latitude).toFixed(6)}, ` +
-          `${Number(data.gps.longitude).toFixed(6)}`
-        )
-      : " · No GPS coordinates";
-
-    // EXIF timezone, if available.
-    const offset = data.timezone_offset
-      ? ` · UTC${data.timezone_offset}`
-      : " · Camera timezone unknown";
-
-    const details =
-      `${data.image_format} · ` +
-      `${data.display_width} × ${data.display_height} · ` +
-      `Orientation ${data.orientation}` +
-      gps +
-      offset;
-
-    metadataNotice(
-      data.captured_at
-        ? `EXIF ${data.date_source} found`
-        : "No capture date in metadata",
-      details,
-      (data.warnings || []).join(" ")
-    );
-
-  } catch (error) {
-    if (
-      controller.signal.aborted ||
-      requestId !== metadataRequest
-    ) {
-      return;
-    }
-
-    if (!manualDateEdited) {
-      elements.dateTime.value = "";
-    }
-
-    updateDatePreview();
-
-    elements.dateHelp.textContent =
-      "Automatic detection is unavailable. You can still enter the photo date/time manually.";
-
-    // NEW: Log errors to Chrome DevTools
-    logger.error("Metadata request failed", error);
-
-    metadataNotice(
-      "Metadata could not be read",
-      "Manual date/time entry is available.",
-      error.message || "Check the API server.",
-      true
-    );
-
-  } finally {
-    if (requestId === metadataRequest) {
-      metadataAbort = null;
-      metadataPending = false;
-    }
-  }
-}
-
-
-// --------------------------------------------------
-// Clear uploaded photo
-// --------------------------------------------------
-
-function clearPhoto() {
-  resetMetadataRequest();
-
-  manualDateEdited = false;
-
-  if (currentObjectUrl) {
-    URL.revokeObjectURL(currentObjectUrl);
-  }
-
-  currentObjectUrl = null;
-
-  elements.photoPreview.removeAttribute("src");
-  elements.photoInput.value = "";
-
-  elements.photoFrame.hidden = true;
-  elements.emptyPreview.hidden = false;
-  elements.fileSummary.hidden = true;
-  elements.metadataPanel.hidden = true;
-
-  elements.uploadMessage.textContent = "";
-
-  elements.dateTime.value = localDateTimeValue(
-    new Date()
-  );
-
-  elements.dateHelp.textContent =
-    "Choose a photograph to detect its capture time from EXIF. You can always edit this field.";
-
-  updateDatePreview();
-}
-
-
-// --------------------------------------------------
-// Load and validate selected photo
-// --------------------------------------------------
-
-function loadPhoto(file) {
-  if (!file) {
-    logger.info("File picker closed without selection");
-    return;
-  }
-
-  // NEW: Log selected image details
-  logger.info("Image selected", {
-    name: file.name,
-    type: file.type,
-    bytes: file.size
-  });
-
-  const supportedType = [
+  const IMAGE_TYPES = new Set([
     "image/jpeg",
     "image/png",
     "image/webp",
     "image/heic",
     "image/heif",
-  ].includes(file.type);
+  ]);
 
-  if (
-    !supportedType &&
-    !SUPPORTED_EXTENSIONS.test(file.name)
-  ) {
-    elements.uploadMessage.textContent =
-      "Choose a JPEG, PNG, WebP, HEIC, or HEIF image.";
+  // ---------------------------------------------
+  // DOM ELEMENTS
+  // ---------------------------------------------
 
-    return;
-  }
+  const ids = [
+    "dropZone",
+    "photoInput",
+    "fileSummary",
+    "fileName",
+    "fileDetails",
+    "removePhoto",
+    "uploadMessage",
+    "metadataPanel",
+    "metadataStatus",
+    "metadataDetails",
+    "metadataWarnings",
+    "dateHelp",
+    "photoDateTime",
+    "boldDate",
+    "calendarHint",
+    "formattedDate",
+    "panjikaNotice",
+    "signatureStatus",
+    "emptyPreview",
+    "photoFrame",
+    "photoPreview",
+    "watermark",
+    "watermarkDate",
+    "signaturePreview",
+  ];
 
-  if (file.size === 0) {
-    elements.uploadMessage.textContent =
-      "This file is empty. Choose another image.";
-
-    return;
-  }
-
-  if (file.size > 50 * 1024 * 1024) {
-    elements.uploadMessage.textContent =
-      "Maximum photo size is 50 MB.";
-
-    return;
-  }
-
-  // Clear the previously selected photo.
-  clearPhoto();
-
-  elements.dateTime.value = "";
-
-  elements.dateHelp.textContent =
-    "Reading the original image metadata…";
-
-  updateDatePreview();
-
-  metadataNotice(
-    "Reading EXIF metadata…",
-    "The image is checked on the server and is not saved to the gallery or a database."
+  const ui = Object.fromEntries(
+    ids.map(id => [id, document.getElementById(id)])
   );
 
-  elements.fileName.textContent = file.name;
-  elements.fileDetails.textContent = humanSize(file.size);
-  elements.fileSummary.hidden = false;
+  const missing = ids.filter(id => !ui[id]);
 
-  const nextUrl = URL.createObjectURL(file);
+  if (missing.length) {
+    log.error(
+      "Missing HTML element IDs:",
+      missing.join(", ")
+    );
+    return;
+  }
 
-  currentObjectUrl = nextUrl;
+  // ---------------------------------------------
+  // APPLICATION STATE
+  // ---------------------------------------------
 
-  // Browser image preview.
-  elements.photoPreview.onload = () => {
-    if (currentObjectUrl !== nextUrl) {
+  let photoUrl = null;
+  let photoFile = null;
+
+  let uploadId = 0;
+  let metadataController = null;
+  let metadataPending = false;
+  let manualDateEdited = false;
+
+  let signatureId = 0;
+  let dateId = 0;
+  let dateController = null;
+
+  // ---------------------------------------------
+  // GENERAL HELPERS
+  // ---------------------------------------------
+
+  const bn = value =>
+    String(value).replace(
+      /\d/g,
+      digit => BN_DIGITS[Number(digit)]
+    );
+
+  const pad = value =>
+    String(value).padStart(2, "0");
+
+  const choice = name =>
+    document.querySelector(
+      `input[name="${name}"]:checked`
+    )?.value;
+
+  // ---------------------------------------------
+  // DATE AND TIME HANDLING
+  // ---------------------------------------------
+
+  function localDateTime(date) {
+    return (
+      `${date.getFullYear()}-` +
+      `${pad(date.getMonth() + 1)}-` +
+      `${pad(date.getDate())}T` +
+      `${pad(date.getHours())}:` +
+      `${pad(date.getMinutes())}`
+    );
+  }
+
+  function selectedDate() {
+    const match =
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/
+        .exec(ui.photoDateTime.value);
+
+    if (!match) return null;
+
+    const [
+      ,
+      year,
+      month,
+      day,
+      hour,
+      minute
+    ] = match.map(Number);
+
+    const date = new Date(
+      year,
+      month - 1,
+      day,
+      hour,
+      minute
+    );
+
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day ||
+      date.getHours() !== hour ||
+      date.getMinutes() !== minute
+    ) {
+      return null;
+    }
+
+    return date;
+  }
+
+  // ---------------------------------------------
+  // GREGORIAN DATE FORMATTING
+  // ---------------------------------------------
+
+  function formatGregorian(date, language) {
+    if (!date) {
+      return "Enter a valid photo date and time";
+    }
+
+    if (language === "en") {
+      const hour = date.getHours() % 12 || 12;
+      const ampm =
+        date.getHours() < 12 ? "AM" : "PM";
+
+      return (
+        `${EN_MONTHS[date.getMonth()]} ` +
+        `${pad(date.getDate())}, ` +
+        `${date.getFullYear()} · ` +
+        `${hour}:${pad(date.getMinutes())} ${ampm}`
+      );
+    }
+
+    return (
+      `${bn(date.getDate())} ` +
+      `${BN_MONTHS[date.getMonth()]}, ` +
+      `${bn(date.getFullYear())} · ` +
+      `${bn(pad(date.getHours()))}:` +
+      `${bn(pad(date.getMinutes()))}`
+    );
+  }
+
+  function showDate(text) {
+    ui.formattedDate.textContent = text;
+    ui.watermarkDate.textContent = text;
+
+    const language =
+      choice("language") === "bn" ? "bn" : "en";
+
+    ui.formattedDate.lang = language;
+    ui.watermarkDate.lang = language;
+  }
+
+  // ---------------------------------------------
+  // CANCEL PREVIOUS PANJIKA REQUEST
+  // ---------------------------------------------
+
+  function cancelDateRequest() {
+    dateId += 1;
+
+    if (dateController) {
+      dateController.abort();
+    }
+
+    dateController = null;
+  }
+
+  // ---------------------------------------------
+  // LIVE DATE PREVIEW
+  // ---------------------------------------------
+
+  async function updateDatePreview() {
+    cancelDateRequest();
+
+    const requestId = dateId;
+    const date = selectedDate();
+
+    const language = choice("language") || "en";
+    const calendar = choice("calendar") || "gregorian";
+
+    // Gregorian date does not require an API call.
+    if (
+      language !== "bn" ||
+      calendar !== "panjika"
+    ) {
+      showDate(formatGregorian(date, language));
       return;
     }
 
-    elements.fileDetails.textContent =
-      `${humanSize(file.size)} · ` +
-      `${elements.photoPreview.naturalWidth} × ` +
-      `${elements.photoPreview.naturalHeight}`;
+    if (!date) {
+      showDate("পঞ্জিকা দেখতে সঠিক তারিখ লিখুন");
+      return;
+    }
 
-    elements.photoFrame.hidden = false;
-    elements.emptyPreview.hidden = true;
+    showDate("পশ্চিমবঙ্গের পঞ্জিকা লোড হচ্ছে…");
 
-    // NEW: Confirm that the image rendered
-    logger.info("Photo preview loaded", {
-      width: elements.photoPreview.naturalWidth,
-      height: elements.photoPreview.naturalHeight
+    const params = new URLSearchParams({
+      captured_at: ui.photoDateTime.value,
+      language: "bn",
+      calendar: "panjika",
     });
-  };
 
-  elements.photoPreview.onerror = () => {
-    if (currentObjectUrl !== nextUrl) {
+    const controller = new AbortController();
+    dateController = controller;
+
+    try {
+      const response = await fetch(
+        `/api/image/format-date?${params}`,
+        {
+          signal: controller.signal,
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : `HTTP ${response.status}`
+        );
+      }
+
+      // Ignore outdated API responses.
+      if (requestId !== dateId) return;
+
+      if (typeof data.formatted !== "string") {
+        throw new Error("Missing formatted date");
+      }
+
+      showDate(data.formatted);
+
+      ui.panjikaNotice.textContent =
+        "West Bengal / Kolkata Bisuddha Siddhanta " +
+        "(supported: 2025–2026).";
+
+      log.info("Panjika date", data.formatted);
+
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        requestId !== dateId
+      ) {
+        return;
+      }
+
+      showDate("পঞ্জিকা তারিখ পাওয়া যায়নি");
+
+      ui.panjikaNotice.hidden = false;
+      ui.panjikaNotice.textContent = error.message;
+
+      log.error(
+        "Panjika API failed:",
+        error.message
+      );
+
+    } finally {
+      if (requestId === dateId) {
+        dateController = null;
+      }
+    }
+  }
+
+  // ---------------------------------------------
+  // LANGUAGE AND CALENDAR CONTROLS
+  // ---------------------------------------------
+
+  function updateControls() {
+    const language = choice("language") || "en";
+
+    const panjikaRadio = document.querySelector(
+      'input[name="calendar"][value="panjika"]'
+    );
+
+    if (panjikaRadio) {
+      panjikaRadio.disabled = language !== "bn";
+    }
+
+    if (language !== "bn") {
+      const gregorian = document.querySelector(
+        'input[name="calendar"][value="gregorian"]'
+      );
+
+      if (gregorian) {
+        gregorian.checked = true;
+      }
+    }
+
+    const isPanjika =
+      language === "bn" &&
+      choice("calendar") === "panjika";
+
+    ui.panjikaNotice.hidden = !isPanjika;
+
+    ui.panjikaNotice.textContent = isPanjika
+      ? "West Bengal Panjika (supported years: 2025–2026)."
+      : "";
+
+    ui.calendarHint.textContent =
+      language === "bn"
+        ? "West Bengal / Indian traditional Panjika (not Bangladesh)."
+        : "Switch to বাংলা to select the traditional Bengali calendar.";
+
+    void updateDatePreview();
+  }
+
+  // ---------------------------------------------
+  // SIGNATURE IMAGE PROCESSING
+  // ---------------------------------------------
+
+  // This function analyzes the original PNG,
+  // detects its color, and crops transparent
+  // padding for the browser preview only.
+
+  function analyzeSignature(image) {
+    const canvas = document.createElement("canvas");
+
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+
+    const ctx = canvas.getContext("2d", {
+      willReadFrequently: true,
+    });
+
+    if (!ctx) {
+      throw new Error("Canvas 2D is unavailable");
+    }
+
+    ctx.drawImage(image, 0, 0);
+
+    const pixels = ctx.getImageData(
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    ).data;
+
+    let left = canvas.width;
+    let top = canvas.height;
+    let right = -1;
+    let bottom = -1;
+
+    const channels = [
+      new Float64Array(256),
+      new Float64Array(256),
+      new Float64Array(256),
+    ];
+
+    let weight = 0;
+
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const i = (
+          y * canvas.width + x
+        ) * 4;
+
+        const alpha = pixels[i + 3];
+
+        if (alpha >= 32) {
+          left = Math.min(left, x);
+          top = Math.min(top, y);
+          right = Math.max(right, x);
+          bottom = Math.max(bottom, y);
+        }
+
+        if (alpha >= 96) {
+          for (let c = 0; c < 3; c++) {
+            channels[c][pixels[i + c]] += alpha;
+          }
+
+          weight += alpha;
+        }
+      }
+    }
+
+    if (right < left) {
+      return {
+        url: image.src,
+        color: null,
+      };
+    }
+
+    function median(histogram) {
+      let sum = 0;
+
+      for (let i = 0; i < 256; i++) {
+        sum += histogram[i];
+
+        if (sum >= weight / 2) {
+          return i;
+        }
+      }
+
+      return 0;
+    }
+
+    const color = weight
+      ? `rgb(${channels.map(median).join(", ")})`
+      : null;
+
+    const margin = Math.max(
+      3,
+      Math.round(
+        Math.min(canvas.width, canvas.height) * 0.01
+      )
+    );
+
+    left = Math.max(0, left - margin);
+    top = Math.max(0, top - margin);
+
+    right = Math.min(
+      canvas.width - 1,
+      right + margin
+    );
+
+    bottom = Math.min(
+      canvas.height - 1,
+      bottom + margin
+    );
+
+    const width = right - left + 1;
+    const height = bottom - top + 1;
+
+    const cropped = document.createElement("canvas");
+
+    cropped.width = width;
+    cropped.height = height;
+
+    cropped.getContext("2d").drawImage(
+      canvas,
+      left,
+      top,
+      width,
+      height,
+      0,
+      0,
+      width,
+      height
+    );
+
+    return {
+      url: cropped.toDataURL("image/png"),
+      color,
+    };
+  }
+
+  // ---------------------------------------------
+  // SIGNATURE SELECTION
+  // ---------------------------------------------
+
+  function updateSignature() {
+    const selected =
+      choice("signature") || "light";
+
+    const filename = `signature_${selected}.png`;
+    const requestId = ++signatureId;
+
+    const image = ui.signaturePreview;
+
+    ui.watermark.classList.toggle(
+      "watermark-light",
+      selected === "light"
+    );
+
+    ui.watermark.classList.toggle(
+      "watermark-dark",
+      selected === "dark"
+    );
+
+    ui.watermark.style.removeProperty(
+      "--signature-text-color"
+    );
+
+    image.hidden = true;
+    image.onload = null;
+    image.onerror = null;
+    image.removeAttribute("src");
+
+    ui.signatureStatus.textContent =
+      `Loading ${filename}…`;
+
+    const source = new Image();
+
+    source.onload = () => {
+      if (requestId !== signatureId) return;
+
+      let result;
+
+      try {
+        result = analyzeSignature(source);
+
+      } catch (error) {
+        log.warn(
+          "Signature analysis failed:",
+          error
+        );
+
+        result = {
+          url: source.src,
+          color: null,
+        };
+      }
+
+      if (result.color) {
+        ui.watermark.style.setProperty(
+          "--signature-text-color",
+          result.color
+        );
+      }
+
+      image.onload = () => {
+        if (requestId !== signatureId) return;
+
+        image.hidden = false;
+
+        ui.signatureStatus.textContent =
+          `Loaded ${filename}.`;
+
+        log.info("Signature loaded", {
+          filename,
+          color: result.color,
+        });
+      };
+
+      image.onerror = () => {
+        if (requestId !== signatureId) return;
+
+        ui.signatureStatus.textContent =
+          `Could not show ${filename}.`;
+
+        log.error(
+          "Signature preview decoding failed:",
+          filename
+        );
+      };
+
+      image.src = result.url;
+    };
+
+    source.onerror = () => {
+      if (requestId !== signatureId) return;
+
+      ui.signatureStatus.textContent =
+        `Missing ${filename} in app/static/images/.`;
+
+      log.error(
+        "Signature missing:",
+        filename
+      );
+    };
+
+    source.src = `/static/images/${filename}`;
+  }
+
+  // ---------------------------------------------
+  // FILE SIZE FORMATTER
+  // ---------------------------------------------
+
+  const sizeLabel = bytes =>
+    bytes >= 1048576
+      ? `${(bytes / 1048576).toFixed(2)} MB`
+      : `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
+
+  // ---------------------------------------------
+  // METADATA STATUS DISPLAY
+  // ---------------------------------------------
+
+  function metadataStatus(
+    title,
+    details = "",
+    warning = "",
+    error = false
+  ) {
+    ui.metadataPanel.hidden = false;
+
+    ui.metadataPanel.classList.toggle(
+      "is-error",
+      error
+    );
+
+    ui.metadataStatus.textContent = title;
+    ui.metadataDetails.textContent = details;
+    ui.metadataWarnings.textContent = warning;
+  }
+
+  // ---------------------------------------------
+  // CLEAR SELECTED PHOTO
+  // ---------------------------------------------
+
+  function clearPhoto(resetDate = true) {
+    uploadId += 1;
+
+    if (metadataController) {
+      metadataController.abort();
+    }
+
+    metadataController = null;
+    metadataPending = false;
+    manualDateEdited = false;
+    photoFile = null;
+
+    if (photoUrl) {
+      URL.revokeObjectURL(photoUrl);
+    }
+
+    photoUrl = null;
+
+    ui.photoPreview.onload = null;
+    ui.photoPreview.onerror = null;
+    ui.photoPreview.removeAttribute("src");
+
+    ui.photoInput.value = "";
+
+    ui.photoFrame.hidden = true;
+    ui.emptyPreview.hidden = false;
+    ui.fileSummary.hidden = true;
+    ui.metadataPanel.hidden = true;
+
+    ui.uploadMessage.textContent = "";
+
+    if (resetDate) {
+      ui.photoDateTime.value =
+        localDateTime(new Date());
+
+      ui.dateHelp.textContent =
+        "Choose a photo to read the capture date from EXIF; you can edit it.";
+
+      void updateDatePreview();
+    }
+
+    log.info("Photo selection cleared");
+  }
+
+  // ---------------------------------------------
+  // READ PHOTO METADATA
+  // ---------------------------------------------
+
+  async function readMetadata(file, requestId) {
+    const controller = new AbortController();
+
+    metadataController = controller;
+    metadataPending = true;
+
+    const form = new FormData();
+
+    form.append(
+      "file",
+      file,
+      file.name
+    );
+
+    log.info(
+      "Reading EXIF metadata",
+      { file: file.name }
+    );
+
+    try {
+      const response = await fetch(
+        "/api/image/metadata",
+        {
+          method: "POST",
+          body: form,
+          signal: controller.signal,
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : `HTTP ${response.status}`
+        );
+      }
+
+      if (requestId !== uploadId) return;
+
+      if (data.captured_at) {
+        if (!manualDateEdited) {
+          ui.photoDateTime.value =
+            data.captured_at.slice(0, 16);
+        }
+
+        ui.dateHelp.textContent = manualDateEdited
+          ? "EXIF date found. Your manual changes have been preserved."
+          : `Capture date from ${data.date_source || "EXIF"}. You may edit it.`;
+
+      } else {
+        if (!manualDateEdited) {
+          ui.photoDateTime.value = "";
+        }
+
+        ui.dateHelp.textContent =
+          "No original capture time found. Enter the correct date manually.";
+      }
+
+      void updateDatePreview();
+
+      const dimensions =
+        data.display_width && data.display_height
+          ? `${data.display_width} × ${data.display_height}`
+          : "Size unavailable";
+
+      const gps =
+        data.gps &&
+        Number.isFinite(Number(data.gps.latitude)) &&
+        Number.isFinite(Number(data.gps.longitude))
+          ? ` · GPS: ${Number(data.gps.latitude).toFixed(5)}, ${Number(data.gps.longitude).toFixed(5)}`
+          : " · No GPS";
+
+      metadataStatus(
+        data.captured_at
+          ? "Original capture date detected"
+          : "No EXIF capture date",
+        `${data.image_format || "Image"} · ${dimensions} · ` +
+        `Orientation ${data.orientation || 1}${gps}`,
+        Array.isArray(data.warnings)
+          ? data.warnings.join(" ")
+          : ""
+      );
+
+      log.info("Metadata parsed", {
+        source: data.date_source,
+        date: data.captured_at || null,
+      });
+
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        requestId !== uploadId
+      ) {
+        return;
+      }
+
+      if (!manualDateEdited) {
+        ui.photoDateTime.value = "";
+      }
+
+      ui.dateHelp.textContent =
+        "Metadata unavailable. Enter the photo date manually.";
+
+      void updateDatePreview();
+
+      metadataStatus(
+        "Metadata request failed",
+        "Manual date entry is available.",
+        error.message || "Check the API server.",
+        true
+      );
+
+      log.error(
+        "Metadata API failed:",
+        error
+      );
+
+    } finally {
+      if (requestId === uploadId) {
+        metadataPending = false;
+        metadataController = null;
+      }
+    }
+  }
+
+  // ---------------------------------------------
+  // LOAD PHOTO
+  // ---------------------------------------------
+
+  function loadPhoto(file) {
+    if (!file) return;
+
+    if (
+      !IMAGE_TYPES.has(file.type) &&
+      !IMAGE_EXTENSIONS.test(file.name)
+    ) {
+      ui.uploadMessage.textContent =
+        "Choose a JPEG, PNG, WebP, HEIC, or HEIF image.";
       return;
     }
 
-    elements.photoFrame.hidden = true;
-    elements.emptyPreview.hidden = false;
+    if (!file.size || file.size > MAX_BYTES) {
+      ui.uploadMessage.textContent = file.size
+        ? "Maximum image size is 50 MB."
+        : "The file is empty.";
 
-    elements.uploadMessage.textContent =
-      "Browser preview unavailable for this format. EXIF metadata can still be extracted; HEIC preview conversion comes in a later step.";
+      return;
+    }
 
-    // NEW: Capture browser decoding failures
-    logger.error("Browser image preview failed", {
+    clearPhoto(false);
+
+    photoFile = file;
+
+    const requestId = uploadId;
+
+    ui.photoDateTime.value = "";
+
+    ui.dateHelp.textContent =
+      "Reading original photo metadata…";
+
+    void updateDatePreview();
+
+    ui.fileName.textContent = file.name;
+    ui.fileDetails.textContent = sizeLabel(file.size);
+
+    ui.fileSummary.hidden = false;
+
+    metadataStatus(
+      "Reading EXIF metadata…",
+      "Your image is not permanently stored."
+    );
+
+    photoUrl = URL.createObjectURL(file);
+
+    const thisUrl = photoUrl;
+
+    // Image loaded successfully.
+    ui.photoPreview.onload = () => {
+      if (
+        requestId !== uploadId ||
+        photoUrl !== thisUrl
+      ) {
+        return;
+      }
+
+      ui.fileDetails.textContent =
+        `${sizeLabel(file.size)} · ` +
+        `${ui.photoPreview.naturalWidth} × ` +
+        `${ui.photoPreview.naturalHeight}`;
+
+      ui.photoFrame.hidden = false;
+      ui.emptyPreview.hidden = true;
+
+      log.info(
+        "Image preview ready",
+        { name: file.name }
+      );
+    };
+
+    // Image could not be decoded by browser.
+    ui.photoPreview.onerror = () => {
+      if (
+        requestId !== uploadId ||
+        photoUrl !== thisUrl
+      ) {
+        return;
+      }
+
+      ui.photoFrame.hidden = true;
+      ui.emptyPreview.hidden = false;
+
+      ui.uploadMessage.textContent =
+        "Your browser cannot preview this format " +
+        "(often HEIC). Metadata may still work.";
+
+      log.warn(
+        "Image preview could not be decoded",
+        {
+          name: file.name,
+          type: file.type,
+        }
+      );
+    };
+
+    ui.photoPreview.src = thisUrl;
+
+    log.info("Photo selected", {
       name: file.name,
-      type: file.type
+      type: file.type,
+      bytes: file.size,
     });
-  };
 
-  elements.photoPreview.src = nextUrl;
-
-  // Request original capture metadata.
-  void readPhotoMetadata(file);
-}
-
-
-// --------------------------------------------------
-// Drag and drop event handling
-// --------------------------------------------------
-
-// Prevent the browser from opening dropped image files.
-
-window.addEventListener("dragover", (event) => {
-  if (event.dataTransfer?.types?.includes("Files")) {
-    event.preventDefault();
+    void readMetadata(file, requestId);
   }
-});
 
-window.addEventListener("drop", (event) => {
-  if (event.dataTransfer?.types?.includes("Files")) {
-    event.preventDefault();
-  }
-});
+  // ---------------------------------------------
+  // FILE INPUT EVENTS
+  // ---------------------------------------------
 
-for (const type of ["dragenter", "dragover"]) {
-  elements.dropZone.addEventListener(type, (event) => {
-    event.preventDefault();
+  ui.photoInput.addEventListener(
+    "change",
+    event => {
+      const file = event.target.files?.[0];
 
-    elements.dropZone.classList.add("drag-active");
-  });
-}
+      if (file) {
+        loadPhoto(file);
+      }
 
-for (const type of ["dragleave", "drop"]) {
-  elements.dropZone.addEventListener(type, (event) => {
-    event.preventDefault();
-
-    elements.dropZone.classList.remove("drag-active");
-  });
-}
-
-elements.dropZone.addEventListener("drop", (event) => {
-  const files = Array.from(
-    event.dataTransfer?.files ?? []
+      // Allow selecting the same file again.
+      event.target.value = "";
+    }
   );
 
-  if (files.length) {
-    loadPhoto(files[0]);
-  }
-});
+  ui.dropZone.addEventListener(
+    "click",
+    () => {
+      ui.photoInput.click();
+    }
+  );
 
+  ui.dropZone.addEventListener(
+    "keydown",
+    event => {
+      if (
+        event.key === "Enter" ||
+        event.key === " "
+      ) {
+        event.preventDefault();
+        ui.photoInput.click();
+      }
+    }
+  );
 
-// --------------------------------------------------
-// Click-to-upload support
-// --------------------------------------------------
+  // ---------------------------------------------
+  // DRAG AND DROP
+  // ---------------------------------------------
 
-elements.dropZone.addEventListener("click", (event) => {
-  // Ignore clicks from the actual file input.
-  if (event.target === elements.photoInput) return;
+  for (const type of [
+    "dragenter",
+    "dragover"
+  ]) {
+    ui.dropZone.addEventListener(
+      type,
+      event => {
+        event.preventDefault();
 
-  logger.info("Opening file chooser");
-  elements.photoInput.click();
-});
-
-elements.dropZone.addEventListener("keydown", (event) => {
-  if (
-    event.key === "Enter" ||
-    event.key === " "
-  ) {
-    event.preventDefault();
-    elements.photoInput.click();
-  }
-});
-
-elements.photoInput.addEventListener("change", () => {
-  loadPhoto(elements.photoInput.files?.[0]);
-});
-
-
-// --------------------------------------------------
-// Remove photo
-// --------------------------------------------------
-
-elements.removePhoto.addEventListener(
-  "click",
-  clearPhoto
-);
-
-
-// --------------------------------------------------
-// Manual date/time editing
-// --------------------------------------------------
-
-elements.dateTime.addEventListener("input", () => {
-  if (metadataPending) {
-    manualDateEdited = true;
+        ui.dropZone.classList.add(
+          "drag-active"
+        );
+      }
+    );
   }
 
-  updateDatePreview();
-});
+  for (const type of [
+    "dragleave",
+    "drop"
+  ]) {
+    ui.dropZone.addEventListener(
+      type,
+      event => {
+        event.preventDefault();
 
+        ui.dropZone.classList.remove(
+          "drag-active"
+        );
+      }
+    );
+  }
 
-// --------------------------------------------------
-// Language and calendar toggle events
-// --------------------------------------------------
+  ui.dropZone.addEventListener(
+    "drop",
+    event => {
+      const file =
+        event.dataTransfer?.files?.[0];
 
-for (
-  const input of document.querySelectorAll(
+      if (file) {
+        loadPhoto(file);
+      }
+    }
+  );
+
+  for (const type of [
+    "dragover",
+    "drop"
+  ]) {
+    window.addEventListener(
+      type,
+      event => {
+        if (
+          event.dataTransfer?.types?.includes("Files")
+        ) {
+          event.preventDefault();
+        }
+      }
+    );
+  }
+
+  // ---------------------------------------------
+  // REMOVE PHOTO
+  // ---------------------------------------------
+
+  ui.removePhoto.addEventListener(
+    "click",
+    () => clearPhoto()
+  );
+
+  // ---------------------------------------------
+  // MANUAL DATE CHANGES
+  // ---------------------------------------------
+
+  ui.photoDateTime.addEventListener(
+    "input",
+    () => {
+      if (metadataPending) {
+        manualDateEdited = true;
+      }
+
+      void updateDatePreview();
+    }
+  );
+
+  // ---------------------------------------------
+  // LANGUAGE AND CALENDAR TOGGLES
+  // ---------------------------------------------
+
+  document.querySelectorAll(
     'input[name="language"], input[name="calendar"]'
-  )
-) {
-  input.addEventListener(
-    "change",
-    updateControls
-  );
-}
+  ).forEach(input => {
+    input.addEventListener(
+      "change",
+      updateControls
+    );
+  });
 
+  // ---------------------------------------------
+  // SIGNATURE TOGGLE
+  // ---------------------------------------------
 
-// --------------------------------------------------
-// Signature toggle events
-// --------------------------------------------------
-
-for (
-  const input of document.querySelectorAll(
+  document.querySelectorAll(
     'input[name="signature"]'
-  )
-) {
-  input.addEventListener(
+  ).forEach(input => {
+    input.addEventListener(
+      "change",
+      updateSignature
+    );
+  });
+
+  // ---------------------------------------------
+  // BOLD DATE TOGGLE
+  // ---------------------------------------------
+
+  ui.boldDate.addEventListener(
     "change",
-    updateSignature
+    () => {
+      ui.watermarkDate.classList.toggle(
+        "is-bold",
+        ui.boldDate.checked
+      );
+    }
   );
-}
 
+  // ---------------------------------------------
+  // CLEANUP
+  // ---------------------------------------------
 
-// --------------------------------------------------
-// Release temporary browser object URL
-// --------------------------------------------------
+  window.addEventListener(
+    "pagehide",
+    () => {
+      metadataController?.abort();
+      dateController?.abort();
 
-window.addEventListener("pagehide", () => {
-  if (currentObjectUrl) {
-    URL.revokeObjectURL(currentObjectUrl);
-  }
-});
+      if (photoUrl) {
+        URL.revokeObjectURL(photoUrl);
+      }
+    }
+  );
 
+  // ---------------------------------------------
+  // INITIALIZE
+  // ---------------------------------------------
 
-// --------------------------------------------------
-// Initialize application
-// --------------------------------------------------
+  // Today's date is only an initial example.
+  // Once a photo is uploaded, its EXIF date
+  // replaces this, when available.
 
-elements.dateTime.value = localDateTimeValue(
-  new Date()
-);
+  ui.photoDateTime.value =
+    localDateTime(new Date());
 
-updateControls();
-updateSignature();
+  ui.watermarkDate.classList.toggle(
+    "is-bold",
+    ui.boldDate.checked
+  );
+
+  updateControls();
+  updateSignature();
+
+  log.info("Step 4 frontend initialized");
+})();
