@@ -61,12 +61,21 @@ def render_image(
     calendar: str = Form("gregorian"),
     signature: str = Form("light"),
     bold: bool = Form(False),
+    signature_width_ratio: float | None = Form(None),
+    font_size_ratio: float | None = Form(None),
+    left_ratio: float | None = Form(None),
+    bottom_ratio: float | None = Form(None),
+    gap_ratio: float | None = Form(None),
 ):
     try:
         logger.info("Rendering watermark: format=%s, calendar=%s, signature=%s", file.content_type, calendar, signature)
         raw = _read_limited(file)
-        result, mime, ext = render_photo(raw, camera_date=captured_at, language=language,
-                                         calendar=calendar, signature=signature, bold=bold)
+        result, mime, ext = render_photo(
+            raw, camera_date=captured_at, language=language, calendar=calendar,
+            signature=signature, bold=bold,
+            signature_width_ratio=signature_width_ratio, font_size_ratio=font_size_ratio,
+            left_ratio=left_ratio, bottom_ratio=bottom_ratio, gap_ratio=gap_ratio,
+        )
     except CalendarRangeError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except FontUnavailableError as exc:

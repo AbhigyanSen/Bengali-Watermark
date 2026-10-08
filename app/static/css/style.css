@@ -212,3 +212,10 @@ h1 em { font-family: Georgia, serif; color: var(--accent); font-weight: 500; }
 .preview-footnote, .format-output, .format-output strong { min-width: 0; overflow-wrap: anywhere; }
 .format-output strong { font-size: 14px; font-weight: 400; }
 .preview-stage > .photo-frame { flex: 0 1 auto; }
+
+/* Step 5: only the export-button states; watermark styles above are unchanged. */
+.download-button:not(:disabled) { background: var(--accent); color: white; }
+.download-button:not(:disabled):hover { background: var(--accent-strong); }
+.download-button:disabled { opacity: .75; }
+.download-status { min-height: 1em; margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.download-status:empty { display: none; }

@@ -67,6 +67,9 @@
     "watermark",
     "watermarkDate",
     "signaturePreview",
+    "downloadButton",
+    "downloadLabel",
+    "downloadStatus",
   ];
 
   const ui = Object.fromEntries(
@@ -98,6 +101,9 @@
   let signatureId = 0;
   let dateId = 0;
   let dateController = null;
+
+  let exporting = false;
+  let dateReady = false;
 
   // ---------------------------------------------
   // GENERAL HELPERS
@@ -199,7 +205,21 @@
     );
   }
 
-  function showDate(text) {
+  function refreshDownloadButton() {
+    const available = Boolean(
+      photoFile &&
+      !ui.photoFrame.hidden &&
+      !ui.signaturePreview.hidden &&
+      ui.signaturePreview.naturalWidth > 0 &&
+      dateReady &&
+      selectedDate() &&
+      !exporting
+    );
+
+    ui.downloadButton.disabled = !available;
+  }
+
+  function showDate(text, ready = Boolean(selectedDate())) {
     ui.formattedDate.textContent = text;
     ui.watermarkDate.textContent = text;
 
@@ -208,6 +228,9 @@
 
     ui.formattedDate.lang = language;
     ui.watermarkDate.lang = language;
+
+    dateReady = ready;
+    refreshDownloadButton();
   }
 
   // ---------------------------------------------
@@ -247,11 +270,11 @@
     }
 
     if (!date) {
-      showDate("পঞ্জিকা দেখতে সঠিক তারিখ লিখুন");
+      showDate("পঞ্জিকা দেখতে সঠিক তারিখ লিখুন", false);
       return;
     }
 
-    showDate("পশ্চিমবঙ্গের পঞ্জিকা লোড হচ্ছে…");
+    showDate("পশ্চিমবঙ্গের পঞ্জিকা লোড হচ্ছে…", false);
 
     const params = new URLSearchParams({
       captured_at: ui.photoDateTime.value,
@@ -303,7 +326,7 @@
         return;
       }
 
-      showDate("পঞ্জিকা তারিখ পাওয়া যায়নি");
+      showDate("পঞ্জিকা তারিখ পাওয়া যায়নি", false);
 
       ui.panjikaNotice.hidden = false;
       ui.panjikaNotice.textContent = error.message;
@@ -931,6 +954,149 @@
     void readMetadata(file, requestId);
   }
 
+
+  // ---------------------------------------------
+  // STEP 5: EXPORT WATERMARKED IMAGE
+  // ---------------------------------------------
+
+  // Use the preview's measured sizes and offsets so the
+  // backend scales them to the photograph's full resolution.
+  function getWatermarkGeometry() {
+    const photo = ui.photoPreview.getBoundingClientRect();
+    const signature = ui.signaturePreview.getBoundingClientRect();
+    const watermarkStyle = getComputedStyle(ui.watermark);
+    const dateStyle = getComputedStyle(ui.watermarkDate);
+
+    if (!photo.width || !photo.height || !signature.width) {
+      throw new Error("The photo and signature preview must load first.");
+    }
+
+    const ratios = {
+      signature_width_ratio: signature.width / photo.width,
+      font_size_ratio: parseFloat(dateStyle.fontSize) / photo.width,
+      left_ratio: parseFloat(watermarkStyle.left) / photo.width,
+      bottom_ratio: parseFloat(watermarkStyle.bottom) / photo.height,
+      gap_ratio: (parseFloat(watermarkStyle.rowGap || watermarkStyle.gap) || 0) / photo.height,
+    };
+
+    if (Object.values(ratios).some(v => !Number.isFinite(v) || v < 0)) {
+      throw new Error("Unable to measure the preview proportions.");
+    }
+
+    return ratios;
+  }
+
+  async function downloadFinalImage() {
+    if (ui.downloadButton.disabled || !photoFile || !selectedDate()) return;
+
+    const originalFile = photoFile;
+    exporting = true;
+    refreshDownloadButton();
+    ui.downloadLabel.textContent = "Rendering photograph…";
+    ui.downloadStatus.textContent = "Creating your full-resolution image…";
+
+    try {
+      const form = new FormData();
+      form.append("file", originalFile, originalFile.name);
+      form.append("captured_at", ui.photoDateTime.value);
+      form.append("language", choice("language") || "en");
+      form.append("calendar", choice("calendar") || "gregorian");
+      form.append("signature", choice("signature") || "light");
+      form.append("bold", String(ui.boldDate.checked));
+
+      const geometry = getWatermarkGeometry();
+      for (const [key, value] of Object.entries(geometry)) {
+        form.append(key, String(value));
+      }
+
+      log.info("Starting watermark export", {
+        file: originalFile.name,
+        geometry
+      });
+
+      const response = await fetch("/api/image/render", {
+        method: "POST",
+        body: form,
+      });
+
+      if (!response.ok) {
+        let message = `Render failed (HTTP ${response.status}).`;
+
+        try {
+          const result = await response.json();
+
+          if (typeof result.detail === "string") {
+            message = result.detail;
+          }
+        } catch {
+          // Keep HTTP message when server error is not JSON.
+        }
+
+        throw new Error(message);
+      }
+
+      const mime = (
+        response.headers.get("content-type") || ""
+      ).split(";")[0];
+
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mime)) {
+        throw new Error("The server returned an unsupported image format.");
+      }
+
+      const output = await response.blob();
+
+      if (!output.size) {
+        throw new Error("The exported image is empty.");
+      }
+
+      const ext = mime === "image/png"
+        ? "png"
+        : mime === "image/webp"
+          ? "webp"
+          : "jpg";
+
+      const name = originalFile.name
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^a-zA-Z0-9_-]+/g, "_")
+        .slice(0, 65) || "photo";
+
+      const downloadName = `${name}_watermarked.${ext}`;
+
+      const url = URL.createObjectURL(output);
+      const link = document.createElement("a");
+
+      link.href = url;
+      link.download = downloadName;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      // Allow time for browsers to start the download.
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+      ui.downloadStatus.textContent =
+        `Download started: ${downloadName}`;
+
+      log.info("Export ready", {
+        name: downloadName,
+        bytes: output.size
+      });
+
+    } catch (error) {
+      ui.downloadStatus.textContent =
+        error.message || "Download failed.";
+
+      log.error("Watermark download failed", error);
+
+    } finally {
+      exporting = false;
+      ui.downloadLabel.textContent = "Download final image";
+      refreshDownloadButton();
+    }
+  }
+
+
   // ---------------------------------------------
   // FILE INPUT EVENTS
   // ---------------------------------------------
@@ -1097,6 +1263,25 @@
     }
   );
 
+  // NEW: Download button
+  ui.downloadButton.addEventListener(
+    "click", () => void downloadFinalImage()
+  );
+
+  // Refresh button availability when the photo
+  // or signature finishes loading.
+  const downloadObserver = new MutationObserver(refreshDownloadButton);
+
+  downloadObserver.observe(ui.photoFrame, {
+    attributes: true,
+    attributeFilter: ["hidden"]
+  });
+
+  downloadObserver.observe(ui.signaturePreview, {
+    attributes: true,
+    attributeFilter: ["hidden"]
+  });
+
   // ---------------------------------------------
   // CLEANUP
   // ---------------------------------------------
@@ -1131,6 +1316,7 @@
 
   updateControls();
   updateSignature();
+  refreshDownloadButton();
 
-  log.info("Step 4 frontend initialized");
+  log.info("Step 5 frontend initialized");
 })();

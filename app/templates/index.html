@@ -20,7 +20,7 @@
           <p class="brand-subtitle">Made for memories, written in বাংলা</p>
         </div>
       </div>
-      <span class="header-label"><span class="status-dot" aria-hidden="true"></span> Metadata integration · Step 03</span>
+      <span class="header-label"><span class="status-dot" aria-hidden="true"></span> Bengali Panjika · Step 04</span>
     </div>
   </header>
 
@@ -105,7 +105,7 @@
             <span>WATERMARK DATE PREVIEW</span>
             <strong id="formattedDate"></strong>
           </div>
-          <p class="notice" id="panjikaNotice" hidden>Accurate West Bengal Panjika conversion will be connected in Step 04. We won't substitute the Bangladesh calendar.</p>
+          <p class="notice" id="panjikaNotice" hidden>West Bengal / Kolkata Bisuddha Siddhanta dates are verified for 2025–2026. Other years are not guessed.</p>
         </section>
 
         <section class="panel" aria-labelledby="signature-heading">
@@ -167,18 +167,19 @@
         </div>
 
         <div class="preview-footer">
-          <div class="preview-footnote"><span class="footnote-icon" aria-hidden="true">ⓘ</span><span>This is a layout preview only. Original-resolution rendering and download are part of the watermark engine in Step 04–05.</span></div>
-          <button class="download-button" type="button" disabled title="Enabled after the watermark export API is implemented">
+          <div class="preview-footnote"><span class="footnote-icon" aria-hidden="true">ⓘ</span><span>Preview proportions are used for the full-resolution download. Camera orientation is preserved; original metadata is removed from exports.</span></div>
+          <button class="download-button" id="downloadButton" type="button" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-            Download final image <span>· Step 05</span>
+            <span id="downloadLabel">Download final image</span>
           </button>
+          <p class="download-status" id="downloadStatus" role="status" aria-live="polite"></p>
         </div>
       </aside>
     </div>
 
     <footer class="site-footer">
       <span>Bengali Watermark Studio · A lightweight photo tool</span>
-      <span>Selected image is sent to the API for metadata only · No image is saved permanently</span>
+      <span>Selected image is processed temporarily for metadata and export · No image is stored permanently</span>
     </footer>
   </main>
 </body>
