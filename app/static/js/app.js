@@ -1544,28 +1544,48 @@
     // AUTOMATIC SIGNATURE / TIMESTAMP ALIGNMENT
     // ---------------------------------------------
 
+    // ---------------------------------------------
+    // SIGNATURE & TIMESTAMP ALIGNMENT
+    // ---------------------------------------------
+
     const groupWidth = Math.max(sw, dw);
     const groupX = alignX(groupWidth);
 
     let signatureX = groupX;
     let dateX = groupX;
 
-    // Keep both left-aligned when the timestamp
-    // is more than 30% wider than the signature.
     const dateMuchWider = dw > sw * 1.30;
 
-    if (!dateMuchWider) {
+    if (alignment === 'center') {
 
-      if (sw > dw) {
-        // Signature is wider:
-        // Center the shorter timestamp beneath it.
-        dateX += (sw - dw) / 2;
+      // CENTER:
+      // Both elements are independently centered
+      // horizontally within the photograph.
+      signatureX = (w - sw) / 2;
+      dateX = (w - dw) / 2;
 
-      } else if (dw > sw) {
-        // Timestamp is wider by 30% or less:
-        // Center the shorter signature above it.
-        signatureX += (dw - sw) / 2;
+    } else if (dateMuchWider) {
+
+      // Timestamp is over 30% wider than signature.
+      // Keep both aligned to the selected edge.
+      if (alignment === 'right') {
+        signatureX = w - marginX - sw;
+        dateX = w - marginX - dw;
       }
+
+      // Left alignment already uses groupX.
+
+    } else if (sw > dw) {
+
+      // Signature is wider.
+      // Center timestamp beneath the signature.
+      dateX += (sw - dw) / 2;
+
+    } else if (dw > sw) {
+
+      // Timestamp is wider by 30% or less.
+      // Center signature above timestamp.
+      signatureX += (dw - sw) / 2;
     }
 
     const defaultSig = {
