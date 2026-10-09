@@ -101,7 +101,7 @@ def get_formatted_date(captured_at: str = Query(...), language: str = Query('bn'
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {'formatted': text, 'language': language, 'calendar': calendar,
-            'reference': 'Kolkata Bisuddha Siddhanta, verified 2025-2026' if calendar == 'panjika' else 'Gregorian'}
+            'reference': 'Kolkata Bisuddha Siddhanta, 2025–2029 (2027–2029 provisional)' if calendar == 'panjika' else 'Gregorian'}
 
 
 @router.get('/fonts')

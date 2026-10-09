@@ -1,11 +1,8 @@
-"""West Bengal traditional solar Bangabda, using checked Kolkata month starts.
+"""West Bengal traditional solar Bangabda month-start conversion.
 
-The data below records start dates from the Prokerala Bengali Calendar annual
-pages for 2025 and 2026 (Bisuddha Siddhanta / Kolkata). The Bangladesh revised
-calendar is deliberately NEVER used.
-
-Limited, explicit range: 2025-01-01 through 2026-12-31. Extend the table only
-after verifying new years against authoritative Kolkata monthly calendars.
+Supported Gregorian date range: 2025-01-01 to 2029-12-31.
+Uses Kolkata Bisuddha Siddhanta / Drik month-start boundaries.
+The additional 2027-2029 data needs independent full-month verification.
 """
 from __future__ import annotations
 
@@ -19,8 +16,10 @@ MONTH_NAMES = (
 )
 
 # (Gregorian date when the month begins, Bengali month 0-11, Bangabda year)
+# Existing 2025–2026 boundaries were sourced from Prokerala Kolkata calendars:
 # https://www.prokerala.com/calendar/bengalicalendar-2025.html
 # https://www.prokerala.com/calendar/bengalicalendar-2026.html
+# The supplied 2027–2029 entries require an independent month-by-month source audit.
 _BOUNDARIES = (
     (date(2024, 12, 17), 8, 1431),
     (date(2025, 1, 15), 9, 1431),
@@ -47,14 +46,53 @@ _BOUNDARIES = (
     (date(2026, 10, 19), 6, 1433),
     (date(2026, 11, 18), 7, 1433),
     (date(2026, 12, 17), 8, 1433),
+    (date(2027, 1, 15), 9, 1433),
+    (date(2027, 2, 14), 10, 1433),
+    (date(2027, 3, 16), 11, 1433),
+    # 1434
+    (date(2027, 4, 15), 0, 1434),  # corrected from supplied Apr 16
+    (date(2027, 5, 16), 1, 1434),
+    (date(2027, 6, 17), 2, 1434),
+    (date(2027, 7, 18), 3, 1434),
+    (date(2027, 8, 19), 4, 1434),
+    (date(2027, 9, 19), 5, 1434),
+    (date(2027, 10, 19), 6, 1434),
+    (date(2027, 11, 18), 7, 1434),
+    (date(2027, 12, 17), 8, 1434),
+    (date(2028, 1, 16), 9, 1434),
+    (date(2028, 2, 15), 10, 1434),
+    (date(2028, 3, 15), 11, 1434),
+    # 1435
+    (date(2028, 4, 14), 0, 1435),  # corrected from supplied Apr 15, Drik calendar
+    (date(2028, 5, 15), 1, 1435),
+    (date(2028, 6, 16), 2, 1435),
+    (date(2028, 7, 17), 3, 1435),
+    (date(2028, 8, 18), 4, 1435),
+    (date(2028, 9, 18), 5, 1435),
+    (date(2028, 10, 18), 6, 1435),
+    (date(2028, 11, 17), 7, 1435),
+    (date(2028, 12, 16), 8, 1435),
+    (date(2029, 1, 15), 9, 1435),
+    (date(2029, 2, 13), 10, 1435),
+    (date(2029, 3, 15), 11, 1435),
+    # 1436
+    (date(2029, 4, 15), 0, 1436),
+    (date(2029, 5, 16), 1, 1436),
+    (date(2029, 6, 16), 2, 1436),
+    (date(2029, 7, 18), 3, 1436),
+    (date(2029, 8, 18), 4, 1436),
+    (date(2029, 9, 18), 5, 1436),
+    (date(2029, 10, 19), 6, 1436),
+    (date(2029, 11, 18), 7, 1436),
+    (date(2029, 12, 17), 8, 1436),
 )
 _FIRST = date(2025, 1, 1)
-_LAST = date(2026, 12, 31)
+_LAST = date(2029, 12, 31)
 _STARTS = tuple(row[0] for row in _BOUNDARIES)
 
 
 class CalendarRangeError(ValueError):
-    """The given Gregorian date has no checked local Panjika conversion."""
+    """The Gregorian date lies outside the supported Panjika table."""
 
 
 @dataclass(frozen=True)
@@ -68,8 +106,8 @@ class BengaliDate:
 def to_west_bengal_date(day: date) -> BengaliDate:
     if not _FIRST <= day <= _LAST:
         raise CalendarRangeError(
-            "West Bengal Panjika is verified for 2025–2026 only. "
-            "Choose Bengali Gregorian for other dates until more years are validated."
+            "West Bengal Panjika is available for 2025–2029 only. "
+            "Choose Bengali Gregorian for other dates."
         )
     index = bisect_right(_STARTS, day) - 1
     start, month, year = _BOUNDARIES[index]

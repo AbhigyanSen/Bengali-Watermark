@@ -355,7 +355,7 @@
     ui.panjikaToggle.checked = bnLang && panjika.checked;
 
     ui.calendarHint.textContent = bnLang
-      ? 'Traditional West Bengal Panjika (verified for 2025–2026).'
+      ? 'Traditional West Bengal Panjika (2025–2029).'
       : 'Choose বাংলা to enable the West Bengal Panjika.';
 
     void updateFontForLanguage();
