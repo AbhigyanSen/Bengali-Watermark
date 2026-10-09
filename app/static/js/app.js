@@ -112,6 +112,12 @@
 
   let file = null;
   let objectUrl = null;
+
+  // Separate URL for browser-compatible image previews.
+  let compatiblePreviewUrl = null;
+  let previewAbort = null;
+  let usingCompatiblePreview = false;
+
   let photoRequest = 0;
   let metaAbort = null;
 
@@ -1006,6 +1012,16 @@
     metaPending = false;
     manualDateEdited = false;
 
+    previewAbort?.abort();
+    previewAbort = null;
+
+    if (compatiblePreviewUrl) {
+      URL.revokeObjectURL(compatiblePreviewUrl);
+    }
+
+    compatiblePreviewUrl = null;
+    usingCompatiblePreview = false;
+
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl);
     }
@@ -1163,18 +1179,122 @@
     }
   }
 
+
+  // ---------------------------------------------
+  // HEIC / UNUSUAL JPEG BROWSER PREVIEW
+  // ---------------------------------------------
+
+  async function loadCompatiblePreview(chosen, token) {
+    previewAbort?.abort();
+
+    const controller = new AbortController();
+    previewAbort = controller;
+
+    ui.uploadMessage.textContent =
+      'Preparing a compatible photo preview…';
+
+    try {
+      const form = new FormData();
+      form.append('file', chosen, chosen.name);
+
+      const response = await fetch(
+        '/api/image/preview',
+        {
+          method: 'POST',
+          body: form,
+          signal: controller.signal
+        }
+      );
+
+      if (!response.ok) {
+        let reason =
+          `Preview failed (HTTP ${response.status}).`;
+
+        try {
+          const data = await response.json();
+
+          if (typeof data.detail === 'string') {
+            reason = data.detail;
+          }
+        } catch {
+          // Keep the HTTP error if JSON is unavailable.
+        }
+
+        throw new Error(reason);
+      }
+
+      const blob = await response.blob();
+
+      if (
+        !blob.size ||
+        !blob.type.startsWith('image/')
+      ) {
+        throw new Error(
+          'The server returned an invalid preview image.'
+        );
+      }
+
+      if (
+        token !== photoRequest ||
+        controller.signal.aborted
+      ) {
+        return;
+      }
+
+      if (compatiblePreviewUrl) {
+        URL.revokeObjectURL(compatiblePreviewUrl);
+      }
+
+      compatiblePreviewUrl =
+        URL.createObjectURL(blob);
+
+      usingCompatiblePreview = true;
+
+      // Only the preview is converted.
+      // The original photo remains in `file`.
+      ui.photoPreview.src = compatiblePreviewUrl;
+
+      ui.uploadMessage.textContent = '';
+
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        token !== photoRequest
+      ) {
+        return;
+      }
+
+      ui.uploadMessage.textContent =
+        error.message || 'Could not preview this image.';
+
+      console.error(
+        '[BengaliWatermark] Compatible preview:',
+        error
+      );
+
+    } finally {
+      if (previewAbort === controller) {
+        previewAbort = null;
+      }
+    }
+  }
+
+
   // --------------------------------------------------
   // PHOTO UPLOAD
   // --------------------------------------------------
+
 
   function loadPhoto(chosen) {
     if (!chosen) return;
 
     const allowed =
-      /\.(jpg|jpeg|png|webp|heic|heif)$/i;
+      /\.(jpe?g|png|webp|heic|heif)$/i;
 
     const imageTypes = [
       'image/jpeg',
+      'image/jpg',
+      'image/pjpeg',
       'image/png',
       'image/webp',
       'image/heic',
@@ -1186,8 +1306,7 @@
       !imageTypes.includes(chosen.type)
     ) {
       ui.uploadMessage.textContent =
-        'Choose a JPEG, PNG, WebP, or HEIC photo.';
-
+        'Choose a JPG, JPEG, PNG, WebP, HEIC, or HEIF photograph.';
       return;
     }
 
@@ -1196,15 +1315,21 @@
       chosen.size > 50 * 1024 * 1024
     ) {
       ui.uploadMessage.textContent =
-        'Photo must be between 1 byte and 50 MB.';
-
+        'Maximum photo size is 50 MB.';
       return;
     }
 
     clearPhoto(false);
 
+    // The original image is always used for
+    // EXIF metadata and final downloading.
     file = chosen;
+
     const token = photoRequest;
+
+    const appleImage =
+      /\.(heic|heif)$/i.test(chosen.name) ||
+      ['image/heic', 'image/heif'].includes(chosen.type);
 
     ui.photoDateTime.value = '';
     void updateDate();
@@ -1217,18 +1342,21 @@
     ui.removePhoto.disabled = false;
 
     objectUrl = URL.createObjectURL(chosen);
-    const url = objectUrl;
+    const originalUrl = objectUrl;
 
+    // Photo preview successfully loaded.
     ui.photoPreview.onload = () => {
       if (
         token !== photoRequest ||
-        url !== objectUrl
+        originalUrl !== objectUrl
       ) {
         return;
       }
 
       ui.photoFrame.hidden = false;
       ui.emptyPreview.hidden = true;
+
+      ui.uploadMessage.textContent = '';
 
       ui.fileDetails.textContent =
         `${ui.photoPreview.naturalWidth} × ` +
@@ -1239,18 +1367,31 @@
       refreshDownload();
     };
 
+    // If the browser cannot display the image,
+    // request a converted preview from FastAPI.
     ui.photoPreview.onerror = () => {
       if (token !== photoRequest) {
         return;
       }
 
-      ui.uploadMessage.textContent =
-        'Browser cannot preview this image type. ' +
-        'Try JPEG or PNG.';
+      if (!usingCompatiblePreview) {
+        void loadCompatiblePreview(chosen, token);
+      } else {
+        ui.uploadMessage.textContent =
+          'The converted preview could not be displayed. ' +
+          'Try another photograph.';
+      }
     };
 
-    ui.photoPreview.src = url;
+    if (appleImage) {
+      // Most browsers cannot display HEIC directly.
+      void loadCompatiblePreview(chosen, token);
+    } else {
+      // Native JPEG, PNG and WebP first.
+      ui.photoPreview.src = originalUrl;
+    }
 
+    // Always read EXIF from the original file.
     void fetchMetadata(chosen, token);
   }
 
@@ -1908,6 +2049,15 @@
     'click',
     () => ui.photoInput.click()
   );
+
+  // Allow clicking anywhere inside the empty photo area.
+  ui.emptyPreview.addEventListener('click', event => {
+    if (event.target.closest('button')) {
+      return;
+    }
+
+    ui.photoInput.click();
+  });
 
   ui.replacePhoto.addEventListener(
     'click',

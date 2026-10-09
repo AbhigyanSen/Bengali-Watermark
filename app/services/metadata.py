@@ -96,9 +96,29 @@ def extract_metadata(file_obj: BinaryIO) -> dict[str, Any]:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(file_obj) as photo:
+                # Check the actual image format detected by Pillow.
                 fmt = (photo.format or "").upper()
+
+                # Temporary diagnostic logging.
+                # Does not print photo content or EXIF values.
+                print(
+                    f"[IMAGE DEBUG][metadata] "
+                    f"Pillow format={fmt!r} "
+                    f"mode={photo.mode!r} "
+                    f"size={photo.size}",
+                    flush=True,
+                )
+
+                # Some JPEG-based images are detected as MPO.
+                # Treat their first image as a normal JPEG.
+                if fmt == "MPO":
+                    fmt = "JPEG"
+
                 if fmt not in SUPPORTED_FORMATS:
-                    raise ValueError("Unsupported image format. Use JPEG, PNG, WebP or HEIC/HEIF.")
+                    raise ValueError(
+                        "Unsupported image format. "
+                        "Use JPEG, PNG, WebP or HEIC/HEIF."
+                    )
 
                 width, height = photo.size
                 if width <= 0 or height <= 0 or width * height > MAX_METADATA_PIXELS:
@@ -143,6 +163,12 @@ def extract_metadata(file_obj: BinaryIO) -> dict[str, Any]:
                     warnings_list.append("EXIF timezone is unknown; the camera's recorded clock time is preserved.")
 
                 gps = _gps_data(gps_ifd)
+                print(
+                    f"[IMAGE DEBUG][metadata] "
+                    f"exif_date_found={capture is not None} "
+                    f"gps_present={gps is not None}",
+                    flush=True,
+                )
                 if not gps:
                     warnings_list.append("GPS coordinates are not embedded in this image.")
 

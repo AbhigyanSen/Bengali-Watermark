@@ -22,7 +22,7 @@
       <section class="canvas-card" aria-labelledby="canvasTitle">
         <div class="canvas-top"><div><h2 id="canvasTitle">Your photograph</h2><p>Everything you see is included in the export.</p></div><span class="canvas-chip">LIVE PREVIEW</span></div>
         <div id="previewStage" class="preview-stage">
-          <div id="emptyPreview" class="empty-preview"><div class="upload-art" aria-hidden="true"><svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="10" width="50" height="44" rx="9"/><circle cx="24" cy="25" r="5"/><path d="M10 47l15-14 10 9 10-12 12 13"/></svg></div><h3>Start with a photo</h3><p>Tap to choose an image, or drop one here.</p><button type="button" class="secondary-button" id="choosePhoto">Choose photograph</button><small>JPEG · PNG · WebP · HEIC, up to 50 MB</small></div>
+          <div id="emptyPreview" class="empty-preview"><div class="upload-art" aria-hidden="true"><svg viewBox="0 0 64 64" width="56" height="56" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="7" y="10" width="50" height="44" rx="9"/><circle cx="24" cy="25" r="5"/><path d="M10 47l15-14 10 9 10-12 12 13"/></svg></div><h3>Start with a photo</h3><p>Tap anywhere in this area to choose a photo, or drop one here.</p><button type="button" class="secondary-button" id="choosePhoto">Choose photograph</button><small>JPG / JPEG · PNG · WebP · HEIC / HEIF · up to 50 MB</small></div>
           <div class="photo-frame" id="photoFrame" hidden>
             <img id="photoPreview" alt="Selected photo" decoding="async">
             <img id="signaturePreview" class="watermark-item signature-item" data-drag="signature" alt="Signature" draggable="false" hidden>
@@ -96,7 +96,7 @@
         </details>
       </aside>
     </div>
-    <input id="photoInput" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" hidden>
+    <input id="photoInput" type="file" accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.jpe,.png,.webp,.heic,.heif" hidden>
     <footer class="site-footer"><span>Bengali Watermark Studio</span><span>Made with care for your moments.</span></footer>
   </main>
 </body>

@@ -225,3 +225,39 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* Larger photo-selection area */
+
+.empty-preview {
+  width: 100%;
+  align-self: stretch;
+  justify-content: center;
+  cursor: pointer;
+  border: 2px dashed #b9d7cf;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.34);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.empty-preview:hover,
+.empty-preview:focus-within {
+  background: #f2faf7;
+  border-color: var(--accent);
+}
+
+.empty-preview .secondary-button {
+  min-height: 48px;
+  min-width: min(86%, 260px);
+  font-size: 14px;
+}
+
+@media (orientation: portrait) {
+  .empty-preview {
+    gap: 7px;
+    padding: 8px 5px;
+  }
+
+  .empty-preview .secondary-button {
+    min-height: 42px;
+  }
+}

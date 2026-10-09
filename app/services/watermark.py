@@ -7,6 +7,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
 
+# Register the HEIF/HEIC Pillow decoder even when this service is imported alone.
+from app.services.metadata import register_heif_opener
 from app.services.date_formatter import format_timestamp, parse_camera_datetime
 from app.services.font_catalog import FONT_ROOT, load_defaults, pick_bold, resolve_font
 
@@ -125,8 +127,13 @@ def _place(photo: Image.Image, layer: Image.Image, x: float, y: float, name: str
     w, h = photo.size
     px = round(w * x)
     py = round(h * y)
-    if px < 0 or py < 0 or px + layer.width > w + 1 or py + layer.height > h + 1:
-        raise RenderError(f'{name} is outside the photograph. Drag it back inside the preview.')
+    # Browser text metrics and Pillow shaping are not pixel-identical.
+    # Preserve the user's desired position as far as the final text can fit,
+    # rather than returning HTTP 400 because a glyph is a few px wider/taller.
+    if layer.width > w or layer.height > h:
+        raise RenderError(f'{name} is too large for this photograph. Try shorter text.')
+    px = min(max(0, px), w - layer.width)
+    py = min(max(0, py), h - layer.height)
     photo.alpha_composite(layer, (px, py))
 
 
@@ -154,8 +161,25 @@ def render_photo(
         raise RenderError('Watermark text must be 180 characters or fewer.')
     sign, ink = _signature(signature)
     try:
+        if contents[4:8] == b'ftyp' and register_heif_opener is None:
+            raise RenderError('HEIC/HEIF decoder is missing. Install pillow-heif using pip install -r requirements.txt.')
         with Image.open(BytesIO(contents)) as original:
+            # Detect the actual uploaded image format.
             fmt = (original.format or '').upper()
+
+            print(
+                f"[IMAGE DEBUG][render] "
+                f"Pillow format={fmt!r} "
+                f"mode={original.mode!r} "
+                f"size={original.size}",
+                flush=True,
+            )
+
+            # MPO is a JPEG-based multi-image format.
+            # Process its first image as JPEG.
+            if fmt == 'MPO':
+                fmt = 'JPEG'
+
             if fmt not in {'JPEG', 'PNG', 'WEBP', 'HEIF'}:
                 raise RenderError('Unsupported photo format.')
             if original.width * original.height > MAX_RENDER_PIXELS:
@@ -164,7 +188,9 @@ def render_photo(
             upright = ImageOps.exif_transpose(original)
             photo = upright.convert('RGBA')
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
-        raise RenderError('Photo could not be decoded.') from exc
+        if contents[4:8] == b'ftyp':
+            raise RenderError('HEIC/HEIF could not be decoded; ensure pillow-heif is installed and the file is valid.') from exc
+        raise RenderError('Photo could not be decoded; verify that the JPG/PNG/WebP file is valid.') from exc
 
     width, height = photo.size
     sign_ratio = _ratio(signature_width_ratio, .17, 'signature width', .01, .70)

@@ -3,13 +3,15 @@ from __future__ import annotations
 
 from io import BytesIO
 import logging
+import warnings
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse, FileResponse
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from app.services.bengali_calendar import CalendarRangeError
 from app.services.date_formatter import format_timestamp, parse_camera_datetime
-from app.services.metadata import extract_metadata
+from app.services.metadata import extract_metadata, register_heif_opener
 from app.services.font_catalog import list_fonts, resolve_font
 from app.services.watermark import FontUnavailableError, RenderError, render_photo
 
@@ -33,6 +35,59 @@ def read_image_metadata(file: UploadFile = File(...)):
         return {'file_size_bytes': file.size, **extract_metadata(BytesIO(_read_limited(file)))}
     except ValueError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
+    finally:
+        file.file.close()
+
+
+# The browser cannot reliably display HEIC/HEIF (and a few unusual JPEGs).
+# Return a small, orientation-corrected JPEG for the PREVIEW only.
+# Metadata and final export continue to receive the ORIGINAL file bytes.
+MAX_PREVIEW_PIXELS = 50_000_000
+MAX_PREVIEW_EDGE = 1800
+
+
+@router.post('/preview')
+def get_compatible_preview(file: UploadFile = File(...)):
+    try:
+        raw = _read_limited(file)
+        heif_hint = (file.filename or '').lower().endswith(('.heic', '.heif')) or (
+            (file.content_type or '').lower() in {'image/heic', 'image/heif'}
+        )
+        if heif_hint and register_heif_opener is None:
+            raise HTTPException(
+                status_code=415,
+                detail='HEIC/HEIF decoder unavailable. Install pillow-heif using pip install -r requirements.txt.',
+            )
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', Image.DecompressionBombWarning)
+                with Image.open(BytesIO(raw)) as source:
+                    fmt = (source.format or '').upper()
+                    if fmt not in {'JPEG', 'PNG', 'WEBP', 'HEIF'}:
+                        raise HTTPException(415, detail='Unsupported photo format. Choose JPG, PNG, WebP, or HEIC/HEIF.')
+                    if source.width * source.height > MAX_PREVIEW_PIXELS:
+                        raise HTTPException(413, detail='This photograph is too large for a preview (limit: 50 megapixels).')
+                    source.draft('RGB', (MAX_PREVIEW_EDGE, MAX_PREVIEW_EDGE))
+                    upright = ImageOps.exif_transpose(source)
+                    upright.thumbnail((MAX_PREVIEW_EDGE, MAX_PREVIEW_EDGE), Image.Resampling.LANCZOS)
+                    if upright.mode in {'RGBA', 'LA', 'P'} or 'transparency' in upright.info:
+                        rgba = upright.convert('RGBA')
+                        background = Image.new('RGB', rgba.size, 'white')
+                        background.paste(rgba, mask=rgba.getchannel('A'))
+                        preview = background
+                    else:
+                        preview = upright.convert('RGB')
+                    output = BytesIO()
+                    preview.save(output, format='JPEG', quality=85, optimize=True)
+        except (UnidentifiedImageError, OSError, SyntaxError, Image.DecompressionBombError,
+                Image.DecompressionBombWarning) as exc:
+            detail = ('Unable to decode this HEIC/HEIF photo. Check pillow-heif installation or try converting it to JPG.'
+                      if heif_hint else 'Unable to decode this photograph. The file may be damaged or use an unsupported codec.')
+            raise HTTPException(415, detail=detail) from exc
+        return StreamingResponse(
+            BytesIO(output.getvalue()), media_type='image/jpeg',
+            headers={'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'},
+        )
     finally:
         file.file.close()
 
